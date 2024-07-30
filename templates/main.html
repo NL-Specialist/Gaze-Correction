@@ -51,25 +51,21 @@
                         </label>
 
                         <div id="newDatasetOptions" class="hidden">
-                            <label for="datasetName">Dataset Name:</label>
+                            <label for="datasetName" id="datasetNameLabel">Dataset Name:</label>
                             <input type="text" id="datasetName" name="datasetName">
 
-                            <label for="numImages">Number of Images:</label>
-                            <input type="number" id="numImages" name="numImages" value="200">
-
-                            <button class="dataset_buttons" id="start" onclick="startNewDataset()">Start</button>
+                            <button class="dataset_buttons" id="start" onclick="startNewDataset()">Create</button>
                         </div>
-
                         <div id="existingDatasetOptions" class="hidden">
                             <label for="existingDatasets">Choose Dataset:</label>
                             <select id="existingDatasets" name="existingDatasets">
                                 <option value="no_datasets">No Datasets Found</option>
                             </select>
                             <label for="numImages">Number of Images:</label>
-                            <input type="number" id="numImages" name="numImages" value="200">
-                            <button class="dataset_buttons" id="startExistingDatasetButton" onclick="startExistingDataset()">Start</button>
+                            <input type="number" id="numImages" name="numImages" value="200" min="5" max="10000">
+                            <button class="dataset_buttons" id="startExistingDatasetButton">Start</button>
                             <button class="dataset_buttons" id="downloadDataset" onclick="downloadDataset()">Download</button>
-                        </div>
+                        </div>                     
                     </div>
                     <div id="video3" class="video-panel">
                         <img id="live-video-left-eye" alt="Left Eye View">

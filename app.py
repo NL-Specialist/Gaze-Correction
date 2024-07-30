@@ -111,37 +111,62 @@ def append_dataset():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Define a route for capturing images, accepting POST requests at '/backend/capture-images'
 @app.route('/backend/capture-images', methods=['POST'])
 def capture_images():
+    # Get the JSON data sent in the request
     data = request.get_json()
+    # Log the received data for debugging
     logging.debug(f"Received data: {data}")
 
+    # Extract specific data fields from the JSON
     dataset_mode        =       data.get("datasetMode")
     dataset_name        =       data.get("datasetName")
+    cameraDirection     =       data.get("cameraDirection")
+    # Print the camera direction to the console (for debugging)
+    print("cameraDirection: ", cameraDirection)
 
+    # Check if dataset mode is provided, if not, return an error response
     if not dataset_mode:
         return jsonify({"error": "Dataset mode is required"}), 400
 
+    # Check if dataset name is provided, if not, return an error response
     if not dataset_name:
         return jsonify({"error": "Dataset name is required"}), 400
 
-    output_dir = os.path.join("datasets", dataset_name)
-    os.makedirs(output_dir, exist_ok=True)
+    # Define the output directory path using the dataset name
+    dataset_dir = os.path.join("datasets", dataset_name)
+    # Create the output directory if it doesn't exist
+    os.makedirs(dataset_dir, exist_ok=True)
 
-    image_number = len(os.listdir(output_dir)) + 1
-    image_dir = os.path.join(output_dir, f"image_{image_number}")
+    # Determine save directory as 'at_camera' or 'away'
+    out_dir = os.path.join(dataset_dir, "at_camera" if cameraDirection == "lookingAtCamera" else "away"); os.makedirs(out_dir, exist_ok=True)
+
+    # Determine the next image number based on the existing files in the output directory
+    image_number = len(os.listdir(out_dir)) + 1
+    # Define the directory for the new image using the image number
+    image_dir = os.path.join(out_dir, f"image_{image_number}")
+    # Create the image directory if it doesn't exist
     os.makedirs(image_dir, exist_ok=True)
 
-    logging.debug(f"Output directory: {output_dir}")
+    # Log the output directory path for debugging
+    logging.debug(f"Output directory: {dataset_dir}")
+    # Log the image directory path for debugging
     logging.debug(f"Image directory: {image_dir}")
 
     try:
+        # Attempt to capture a frame using the camera module and save it to the image directory
         camera_module.capture_frame_from_queue(image_dir)
+        # Log a successful frame capture for debugging
         logging.debug("Frame capture completed successfully")
+        # Return a success message as JSON
         return jsonify({"message": "Capture initiated"})
     except Exception as e:
+        # Log any errors that occur during frame capture
         logging.error(f"Error capturing frame: {str(e)}")
+        # Return an error message as JSON
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/backend/toggle-camera', methods=['POST'])
 def toggle_camera():

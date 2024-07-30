@@ -18,7 +18,7 @@ function openTab(evt, tabName) {
     activeTabName = tabName; // Update the active tab name
     manageWebsockets(tabName);
 }
-let flash_status = "on"; // Global variable to keep track of flash state
+let flash_status = "On"; // Global variable to keep track of flash state
 let holdTimeout;
 let disableTimeout;
 let flashDiv; // Global variable to keep track of the flash div
@@ -26,14 +26,15 @@ let flashDiv; // Global variable to keep track of the flash div
 function toggleFlash() {
     const flashIcon = document.getElementById('flashIcon');
     const flashButton = document.getElementById('flashButton');
-    console.log('toggling flash');
+    
     if (flash_status === "On") {
         flashIcon.src = "/static/flash_off.png";
-        flash_status = "off";
+        flash_status = "Off";
     } else if (flash_status === "Off") {
         flashIcon.src = "/static/flash_on.png";
-        flash_status = "on";
+        flash_status = "On";
     }
+    console.log('toggling flash: ', flash_status);
 
     disableFlashButton(flashButton);
 }
@@ -342,36 +343,6 @@ function startNewDataset() {
     xhr.send(JSON.stringify({ datasetName: datasetName }));
 }
 
-function startExistingDataset() {
-    const selectElement = document.getElementById('existingDatasets');
-    const selectedDataset = selectElement.value;
-    
-    if (!datasetName) {
-        alert('Please enter a dataset name.');
-        return;
-    }
-
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/backend/append_dataset', true);
-    xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
-
-    xhr.onload = function() {
-        if (xhr.status === 201) {
-            alert('Dataset appended successfully.');
-            document.querySelector('input[name="datasetMode"][value="existing"]').checked = true;
-            toggleDatasetMode();
-        } else {
-            const response = JSON.parse(xhr.responseText);
-            alert('Error creating dataset: ' + response.error);
-        }
-    };
-
-    xhr.onerror = function() {
-        alert('Request error');
-    };
-
-    xhr.send(JSON.stringify({ datasetName: selectedDataset }));
-}
 
 
 document.addEventListener('DOMContentLoaded', (event) => {
@@ -388,10 +359,28 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
     const bigRedButton = document.getElementById('bigRedButton');
     if (bigRedButton) {
-        bigRedButton.addEventListener('click', captureImages);
+        bigRedButton.addEventListener('click', () => captureImages(1)); // Default to 1 image
     } else {
         console.log('bigRedButton not found');
     }
+
+    
+    const numImages = document.getElementById('numImages');
+    let nr_images;
+    if (numImages) {
+        nr_images = parseInt(numImages.value, 10);
+        console.log("nr_images: ", nr_images);
+    } else {
+        console.log('numImages input not found');
+    }
+
+    const startExistingDatasetButton = document.getElementById('startExistingDatasetButton');
+    if (startExistingDatasetButton) {
+        startExistingDatasetButton.addEventListener('click', () => captureImages(nr_images)); // Pass the validated number of images
+    } else {
+        console.log('startExistingDatasetButton not found');
+    }
+
 
     toggleDatasetMode();
 
@@ -405,7 +394,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
     // Initialize WebSocket connections
     refreshLiveViews();
 
-    async function captureImages() {
+    async function captureImages(nr_images = 1) {
         const datasetModeElement = document.querySelector('input[name="datasetMode"]:checked');
         if (!datasetModeElement) {
             alert('Please select a dataset mode.');
@@ -429,9 +418,80 @@ document.addEventListener('DOMContentLoaded', (event) => {
             }
         }
     
+        // Check if the popup already exists
+        if (document.querySelector('.capture_image_popup') || document.querySelector('.capture_image_popup-background')) {
+            return;
+        }
+    
+        // Create a popup for camera direction
+        const cameraDirection = await new Promise((resolve) => {
+            const popup = document.createElement('div');
+            popup.className = 'capture_image_popup';
+    
+            const background = document.createElement('div');
+            background.className = 'capture_image_popup-background';
+    
+            const content = document.createElement('div');
+            content.className = 'capture_image_popup-content';
+    
+            const question = document.createElement('p');
+            question.textContent = 'Are you looking at the camera or away from the camera?';
+            content.appendChild(question);
+    
+            const lookingAtCameraOption = document.createElement('input');
+            lookingAtCameraOption.type = 'radio';
+            lookingAtCameraOption.name = 'cameraDirection';
+            lookingAtCameraOption.value = 'lookingAtCamera';
+            lookingAtCameraOption.id = 'lookingAtCamera';
+            const lookingAtCameraLabel = document.createElement('label');
+            lookingAtCameraLabel.htmlFor = 'lookingAtCamera';
+            lookingAtCameraLabel.textContent = 'Looking at the camera';
+            
+            const lookingAtCameraDiv = document.createElement('div');
+            lookingAtCameraDiv.className = 'radio-group';
+            lookingAtCameraDiv.appendChild(lookingAtCameraOption);
+            lookingAtCameraDiv.appendChild(lookingAtCameraLabel);
+            content.appendChild(lookingAtCameraDiv);
+    
+            const awayFromCameraOption = document.createElement('input');
+            awayFromCameraOption.type = 'radio';
+            awayFromCameraOption.name = 'cameraDirection';
+            awayFromCameraOption.value = 'awayFromCamera';
+            awayFromCameraOption.id = 'awayFromCamera';
+            const awayFromCameraLabel = document.createElement('label');
+            awayFromCameraLabel.htmlFor = 'awayFromCamera';
+            awayFromCameraLabel.textContent = 'Away from the camera';
+            
+            const awayFromCameraDiv = document.createElement('div');
+            awayFromCameraDiv.className = 'radio-group';
+            awayFromCameraDiv.appendChild(awayFromCameraOption);
+            awayFromCameraDiv.appendChild(awayFromCameraLabel);
+            content.appendChild(awayFromCameraDiv);
+    
+            const confirmButton = document.createElement('button');
+            confirmButton.textContent = 'Take Picture';
+            confirmButton.className = 'capture_image_popup-confirm-button';
+            confirmButton.onclick = () => {
+                const selectedOption = document.querySelector('input[name="cameraDirection"]:checked');
+                if (selectedOption) {
+                    resolve(selectedOption.value);
+                    document.body.removeChild(popup);
+                    document.body.removeChild(background);
+                } else {
+                    alert('Please select an option.');
+                }
+            };
+            content.appendChild(confirmButton);
+    
+            popup.appendChild(content);
+            document.body.appendChild(background);
+            document.body.appendChild(popup);
+        });
+    
         const payload = {
             datasetMode: datasetMode,
-            datasetName: datasetName
+            datasetName: datasetName,
+            cameraDirection: cameraDirection // Add this line to include the new data
         };
     
         console.log('Sending payload:', payload);
@@ -452,60 +512,50 @@ document.addEventListener('DOMContentLoaded', (event) => {
             return new Promise(resolve => setTimeout(resolve, duration));
         };
     
-        try {
-            // Wait for at least 2000ms before making the API call
-            await minimumDuration(500);
+        for (let i = 0; i < nr_images; i++) {
+            try {
+                // Wait for at least 500ms before making the API call
+                // await minimumDuration(500);
     
-            // Make the API call
-            const response = await fetch('/backend/capture-images', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            });
+                // Make the API call
+                const response = await fetch('/backend/capture-images', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
     
-            if (response.ok) {
-                const result = await response.json();
-                console.log(result.message);
-            } else {
-                const errorData = await response.json();
-                console.log(`Failed to capture images: ${errorData.error}`);
-            }
-        } catch (error) {
-            console.error('Error capturing images:', error);
-            alert('Error capturing images.');
-        } finally {
-            // Mimic camera flashes
-            if (flash_status === 'on')
-            {
-                setTimeout(() => {
-                    flashDiv.classList.remove('flash');
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log(result.message);
+                } else {
+                    const errorData = await response.json();
+                    console.log(`Failed to capture images: ${errorData.error}`);
+                }
+            } catch (error) {
+                console.error('Error capturing images:', error);
+                alert('Error capturing images.');
+            } finally {
+                // Mimic camera flashes
+                if (flash_status === 'on')
+                {
                     setTimeout(() => {
-                        flashDiv.classList.add('flash');
+                        flashDiv.classList.remove('flash');
                         setTimeout(() => {
-                            flashDiv.classList.remove('flash');
-                            createDatasetElement.removeChild(flashDiv);
-                        }, 100); // Duration of the second flash
-                    }, 100); // Interval between the two flashes
-                }, 100); // Duration of the first flash
+                            flashDiv.classList.add('flash');
+                            setTimeout(() => {
+                                flashDiv.classList.remove('flash');
+                                if (i === nr_images - 1) { // Remove flashDiv only after the last image is captured
+                                    createDatasetElement.removeChild(flashDiv);
+                                }
+                            }, 100); // Duration of the second flash
+                        }, 100); // Interval between the two flashes
+                    }, 100); // Duration of the first flash
+                }      
             }
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
         }
-    }
-    
-    
-    
-    
+    }    
     
 
     async function toggleCamera() {
