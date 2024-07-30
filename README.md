@@ -10,3 +10,5 @@ Gaze Classification component employs advanced algorithms to precisely locate, i
 classify the user’s gaze, ensuring accurate tracking of eye and head movements. The Gaze
 Correction componenet utilises various image processing techniques to adjust the user’s gaze,
 seamlessly aligning it with the camera
+
+![image](https://github.com/user-attachments/assets/a6e3d796-67ab-410a-83fc-a0bea6f32798)
