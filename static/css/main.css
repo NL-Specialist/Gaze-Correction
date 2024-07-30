@@ -1,0 +1,625 @@
+body, html {
+    /* margin: 0; */
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%);
+    /* background: linear-gradient(135deg, #293241 0%, #98c1d9 100%); */
+    /* background: transparent; */
+    color: #e8e8e8;
+    overflow: hidden;
+}
+
+h1 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 36px;
+    font-weight: 700;
+    color: #e3f2fd;
+    text-align: center;
+    /* margin-top: 20px; */
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    animation: fadeIn 1s;
+}
+
+#container {
+    height: 100%;
+    width: 100%;
+    /* margin-top: 5vh; */
+    position: relative;
+}
+
+#top-panel {
+    height: auto;
+    margin-top: 2vh;
+    /* background: rgba(255, 255, 255, 0.85); */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: fadeInDown 1s;
+    font-family: 'Poppins', sans-serif;
+    font-weight: bold;
+    
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#main-content {
+    height: 80%;
+    animation: fadeIn 2s;
+    /* margin-top: 6vh; */
+    /* position: relative; */
+    /* background: linear-gradient(135deg, #293241 0%, #98c1d9 100%); */
+    background: transparent;
+}
+
+#Test h1 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 36px;
+    font-weight: 700;
+    color: #e3f2fd;
+    text-align: center;
+    /* margin-top: 20px; */
+    /* margin-bottom: 20px; */
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    animation: fadeIn 1s;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dataset_buttons {
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 150%); /* Light background color for contrast */
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.3s ease, transform 0.2s ease; /* Smooth transition effects */
+}
+
+.dataset_buttons:hover {
+    background: linear-gradient(135deg, #3d5a80 0%, #1e2a38 150%); /* Reverse gradient for hover effect */
+    transform: scale(1.05); /* Slightly increase size on hover */
+}
+
+.dataset_buttons:active {
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 150%); /* Original gradient for active effect */
+    transform: scale(0.95); /* Slightly decrease size on click */
+}
+
+.dataset_buttons:focus {
+    outline: none; /* Remove default outline */
+    box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.5); /* Add custom focus shadow */
+}
+
+
+
+.tab {
+    overflow: hidden;
+    border-bottom: 2px solid #444;
+    width: 30%;
+    display: flex;
+    justify-content: center;
+    /* margin: 2rem auto; Centers the tab horizontally and adds space above and below */
+    border-radius: 25px; /* Slightly rounded corners */
+    border-color: #000000;
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 150%); /* Light background color for contrast */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Adds a subtle shadow for depth */
+    padding-left: 3.1vw;
+    margin-top: 0vh;
+    /* padding: 1rem; Adds some padding for spacing inside the tab */
+}
+
+
+.tab button {
+    background-color: inherit;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 14px 20px;
+    transition: 0.3s;
+    font-size: 18px;
+    color: #ffffff;
+    margin: 0 20px;
+    animation: fadeInUp 1s;
+    font-family: 'Poppins', sans-serif;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.tab button:hover {
+    color: #ffffff; /* Color change on hover */
+    transform: scale(1.1); /* Slightly increase the size of the button on hover */
+}
+
+.tab button.active {
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%);;
+    color: white;
+}
+
+.tabcontent {
+    display: none;
+    height: 100%;
+    width: 100%;
+}
+
+#Test, #Train, #CreateDataset {
+    height: 100%;
+    width: 100%;
+}
+
+.panel {
+    opacity: 0;
+    animation: fadeInPanel 1s forwards;
+}
+
+@keyframes fadeInPanel {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+#left-panel {
+    float: left;
+    width: 48%;
+    height: 94%;
+    margin-top: -1%;
+    margin-left: 1%;
+    background: inherit;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: slideInLeft 1.5s forwards;
+}
+/* 
+#live-video-left {
+    margin-top: 10vh;
+} */
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+#right-panel {
+    float: right;
+    width: 48%;
+    height: 94%;
+    margin-top: -1%;
+    margin-right: 1%;
+    background: inherit;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: slideInRight 1.5s forwards;
+}
+/* 
+#live-video-right {
+    margin-top: 10vh; 
+} */
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+
+#statusMessage {
+    display: flex; /* Use flexbox for centering */
+    justify-content: center; /* Center horizontally */
+    align-items: center; /* Center vertically */
+    font-family: 'Montserrat', sans-serif; /* Modern font */
+    font-size: 13px; /* Adjust font size */
+    color: #ffffff; /* Text color */
+    padding: 20px; /* Padding for spacing */
+    border: none; /* Remove border */
+    border-radius: 50%; /* Fully rounded corners for circle */
+    text-align: center; /* Center the text */
+    width: 50px; /* Fixed width */
+    height: 50px; /* Fixed height */
+    margin-left: auto; /* Center horizontally */
+    margin-right: auto; /* Center horizontally */
+    /* margin-top: -10px; */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Slight shadow */
+    transition: transform 0.3s ease, background-color 0.3s ease; /* Smooth transition for hover effects */
+    cursor: pointer; /* Pointer cursor on hover */
+    animation: slideInUp 2s forwards;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Hover effects */
+#statusMessage:hover {
+    transform: scale(1.05); /* Slightly enlarge on hover */
+}
+
+/* Click effects */
+#statusMessage:active {
+    transform: scale(0.95); /* Slightly scale down on click */
+}
+
+/* Additional styles for different statuses */
+#statusMessage.success {
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%); /* Green gradient for success */
+}
+
+#statusMessage.error {
+    background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%); /* Red gradient for error */
+}
+
+#statusMessage.info {
+    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); /* Blue gradient for info */
+}
+
+#statusMessage.disabled {
+    background: linear-gradient(135deg, #bdc3c7 0%, #2c3e50 100%); /* Grey gradient for disabled */
+    cursor: not-allowed; /* Not-allowed cursor for disabled */
+    box-shadow: none; /* Remove shadow for disabled */
+    pointer-events: none; /* Disable pointer events */
+}
+
+
+
+
+
+/* Existing styles for img */
+img {
+    width: 100%;
+    height: auto;
+    max-height: 90%;
+    object-fit: cover;
+    object-position: 50% 40%;
+    border-radius: 10px;
+    border: 3px solid #e8e8e8;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+
+#toggleButton {
+    position: absolute;
+    bottom: 10%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 20px;
+    background-color: #3d5a80;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    font-family: 'Poppins', sans-serif;
+}
+
+#toggleButton:hover {
+    background-color: #1e2a38;
+}
+
+.hidden {
+    display: none;
+}
+
+@keyframes openVideo {
+    from {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes closeVideo {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+}
+
+#video-grid {
+    position: relative;
+    height: 100%;
+    width: 100%;
+    padding: 0px;
+}
+
+.video-panel {
+    position: absolute;
+    background: inherit;
+}
+
+#video1 {
+    top: 6%;
+    left: 0%;
+    width: 50%;
+    height: 100%;
+    animation: slideInLeft 1.5s forwards;
+}
+
+
+#video3 {
+    bottom: 0%;
+    right: 26%;
+    width: 23%;
+    height: 45%;
+    animation: slideInUp 1.5s forwards;
+}
+
+#video4 {
+    bottom: 0%;
+    right: 2%;
+    width: 23%;
+    height: 45%;
+    animation: slideInUp 1.5s forwards;
+}
+
+
+.flash {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: white;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+
+
+/* Styles for the settings panel */
+#settings-panel {
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%);
+    border-radius: 20px;
+    padding: 25px;
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+    font-family: 'Montserrat', sans-serif;
+    font-size: 14px;
+    color: #fff;
+    position: absolute;
+    right: 2%;
+    top: 6%;
+    width: 44%;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    animation: slideInRight 2s forwards;
+}
+
+#settings-panel:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Styles for labels and inputs */
+#settings-panel label {
+    display: block;
+    margin-bottom: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+}
+
+#settings-panel input[type="text"],
+#settings-panel input[type="number"],
+#settings-panel select {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 20px;
+    border: 2px solid #3d5a80;
+    border-radius: 8px;
+    box-sizing: border-box;
+    font-size: 14px;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+#settings-panel input[type="text"]:hover,
+#settings-panel input[type="number"]:hover,
+#settings-panel select:hover {
+    border-color: #2a3e5c;
+}
+
+#settings-panel input[type="text"]:focus,
+#settings-panel input[type="number"]:focus,
+#settings-panel select:focus {
+    border-color: #1e2a38;
+    box-shadow: 0 0 8px rgba(30, 42, 56, 0.7);
+    outline: none;
+}
+
+/* Styles for radio buttons */
+#settings-panel input[type="radio"] {
+    margin-right: 10px;
+}
+
+/* Styles for radio button labels */
+#settings-panel label[for="newDataset"],
+#settings-panel label[for="existingDataset"] {
+    display: inline-block;
+    margin-right: 20px;
+    font-size: 16px;
+}
+
+/* Styles for buttons */
+#settings-panel .dataset_buttons {
+    display: inline-block;
+    padding: 12px 25px;
+    margin-top: 15px;
+    background: #3d5a80;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.3s ease, transform 0.3s ease;
+}
+
+#settings-panel .dataset_buttons:hover {
+    background: #2a3e5c;
+    transform: translateY(-3px);
+}
+
+#settings-panel .dataset_buttons:active {
+    transform: translateY(0);
+}
+
+/* Adding smooth transitions for showing/hiding elements */
+.hidden {
+    display: none;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+}
+
+.visible {
+    display: block;
+    opacity: 1;
+}
+
+/* Animations for showing elements */
+#newDatasetOptions,
+#existingDatasetOptions {
+    animation: fadeIn 1s ease forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+
+#bigRedButton {
+    position: absolute;
+    bottom: 15%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 60px;
+    background-color: #ff7675;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s ease, background-color 0.3s ease;
+    z-index: 10; /* Ensure the button is on top of the image */
+}
+
+#bigRedButton:hover {
+    background-color: #e57373;
+    transform: translateX(-50%) scale(1.1); /* Scale up the button */
+}
+
+#bigRedButton:active {
+    background-color: #d32f2f;
+    transform: translateX(-50%) scale(0.95); /* Scale down slightly when active */
+}
+
+
+#flashButton {
+    position: absolute;
+    bottom: 20%;
+    right: 43%; /* Adjust based on the width of the big red button */
+    transform: translateX(-50%);
+    width: 35px;
+    height: 35px;
+    background-color: transparent; /* Transparent background */
+    border: none; /* Remove border */
+    outline: none; /* Remove outline */
+    cursor: pointer;
+    z-index: 10; /* Ensure the button is on top of the image */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0; /* Remove any padding */
+    box-shadow: none; /* Remove any box shadow */
+    transition: transform 0.2s ease; /* Smooth transition for the hover effect */
+}
+
+#flashButton:hover {
+    transform: translateX(-50%) scale(1.1); /* Scale up the button */
+}
+
+#flashIcon {
+    width: 100%; /* Scale the image to fit the button */
+    height: 100%;
+    object-fit: contain; /* Ensure the image fits well within the button */
+    border: none; /* Remove any border on the image */
+    padding: 0; /* Remove any padding on the image */
+    margin: 0; /* Remove any margin on the image */
+    box-shadow: none; /* Remove any box shadow on the image */
+    transition: filter 0.2s ease; /* Smooth transition for the hover effect */
+}
+
+#flashButton:hover #flashIcon {
+    filter: brightness(1.2); /* Increase brightness on hover */
+}
+
+
+
