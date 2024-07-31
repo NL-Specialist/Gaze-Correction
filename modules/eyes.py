@@ -33,7 +33,7 @@ class Eyes:
 
             self.gaze_classifier = GazeClassifier()
             
-            # self.set_default_overlay_eyes()
+            self.set_default_overlay_eyes()
         except Exception as e:
             logging.error(f"Error initializing Eyes: {e}")
             raise
@@ -223,8 +223,8 @@ class Eyes:
                     logging.error(f"Error in overlay_image: {e}")
                     raise
 
-            # overlay_image(self.left_eye_bbox, self.left_eye_img)
-            # overlay_image(self.right_eye_bbox, self.right_eye_img)
+            overlay_image(self.left_eye_bbox, self.left_eye_img)
+            overlay_image(self.right_eye_bbox, self.right_eye_img)
             
             return frame
         except Exception as e:
