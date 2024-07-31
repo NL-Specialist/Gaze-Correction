@@ -503,7 +503,7 @@ img {
 #settings-panel select {
     width: 100%;
     padding: 12px;
-    margin-bottom: 20px;
+    /* margin-bottom: 20px; */
     border: 2px solid #3d5a80;
     border-radius: 8px;
     box-sizing: border-box;

@@ -394,7 +394,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
     // Initialize WebSocket connections
     refreshLiveViews();
 
-    async function captureImages(nr_images = 1) {
+    async function captureImages() {
         const datasetModeElement = document.querySelector('input[name="datasetMode"]:checked');
         if (!datasetModeElement) {
             alert('Please select a dataset mode.');
@@ -418,144 +418,170 @@ document.addEventListener('DOMContentLoaded', (event) => {
             }
         }
     
-        // Check if the popup already exists
-        if (document.querySelector('.capture_image_popup') || document.querySelector('.capture_image_popup-background')) {
+        const showPopup = (message, buttonText, inputField = false) => {
+            return new Promise((resolve) => {
+                const popup = document.createElement('div');
+                popup.className = 'capture_image_popup';
+    
+                const background = document.createElement('div');
+                background.className = 'capture_image_popup-background';
+    
+                const content = document.createElement('div');
+                content.className = 'capture_image_popup-content';
+    
+                const infoText = document.createElement('p');
+                infoText.innerHTML = message;
+                content.appendChild(infoText);
+    
+                let inputElement;
+                if (inputField) {
+                    inputElement = document.createElement('input');
+                    inputElement.type = 'number';
+                    inputElement.min = '1';
+                    inputElement.style.width = '100%';
+                    inputElement.style.padding = '12px';
+                    inputElement.style.marginBottom = '20px';
+                    inputElement.style.border = '2px solid #3d5a80';
+                    inputElement.style.borderRadius = '8px';
+                    inputElement.style.boxSizing = 'border-box';
+                    inputElement.style.fontSize = '14px';
+                    inputElement.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                    inputElement.style.color = '#fff';
+                    inputElement.style.transition = 'border-color 0.3s ease, box-shadow 0.3s ease';
+                    
+                    inputElement.onmouseover = () => {
+                        inputElement.style.borderColor = '#2a3e5c';
+                    };
+    
+                    inputElement.onfocus = () => {
+                        inputElement.style.borderColor = '#1e2a38';
+                        inputElement.style.boxShadow = '0 0 8px rgba(30, 42, 56, 0.7)';
+                        inputElement.style.outline = 'none';
+                    };
+    
+                    inputElement.onblur = () => {
+                        inputElement.style.borderColor = '#3d5a80';
+                        inputElement.style.boxShadow = 'none';
+                    };
+    
+                    content.appendChild(inputElement);
+                }
+    
+                const confirmButton = document.createElement('button');
+                confirmButton.textContent = buttonText;
+                confirmButton.className = 'capture_image_popup-confirm-button';
+                confirmButton.onclick = () => {
+                    const result = inputField ? inputElement.value : null;
+                    document.body.removeChild(popup);
+                    document.body.removeChild(background);
+                    resolve(result);
+                };
+                content.appendChild(confirmButton);
+    
+                popup.appendChild(content);
+                document.body.appendChild(background);
+                document.body.appendChild(popup);
+            });
+        };
+    
+        const nr_images = await showPopup(`
+            You will take 2 sets of pictures.<br><br>
+            <strong>Set 1:</strong><br>
+            Direct your head in a direction and keep your eyes focused on the camera.<br><br>
+            <strong>Set 2:</strong><br>
+            Keep your head still and point your eyes away from the camera.<br><br>
+            Please enter the number of images per set:
+        `, 'Continue to Set 1', true);
+    
+        if (!nr_images) {
+            alert('Please enter a valid number of images.');
             return;
         }
     
-        // Create a popup for camera direction
-        const cameraDirection = await new Promise((resolve) => {
-            const popup = document.createElement('div');
-            popup.className = 'capture_image_popup';
+        const captureSet = async (cameraDirection, setDescription) => {
+            await showPopup(setDescription, 'Start');
     
-            const background = document.createElement('div');
-            background.className = 'capture_image_popup-background';
-    
-            const content = document.createElement('div');
-            content.className = 'capture_image_popup-content';
-    
-            const question = document.createElement('p');
-            question.textContent = 'Are you looking at the camera or away from the camera?';
-            content.appendChild(question);
-    
-            const lookingAtCameraOption = document.createElement('input');
-            lookingAtCameraOption.type = 'radio';
-            lookingAtCameraOption.name = 'cameraDirection';
-            lookingAtCameraOption.value = 'lookingAtCamera';
-            lookingAtCameraOption.id = 'lookingAtCamera';
-            const lookingAtCameraLabel = document.createElement('label');
-            lookingAtCameraLabel.htmlFor = 'lookingAtCamera';
-            lookingAtCameraLabel.textContent = 'Looking at the camera';
-            
-            const lookingAtCameraDiv = document.createElement('div');
-            lookingAtCameraDiv.className = 'radio-group';
-            lookingAtCameraDiv.appendChild(lookingAtCameraOption);
-            lookingAtCameraDiv.appendChild(lookingAtCameraLabel);
-            content.appendChild(lookingAtCameraDiv);
-    
-            const awayFromCameraOption = document.createElement('input');
-            awayFromCameraOption.type = 'radio';
-            awayFromCameraOption.name = 'cameraDirection';
-            awayFromCameraOption.value = 'awayFromCamera';
-            awayFromCameraOption.id = 'awayFromCamera';
-            const awayFromCameraLabel = document.createElement('label');
-            awayFromCameraLabel.htmlFor = 'awayFromCamera';
-            awayFromCameraLabel.textContent = 'Away from the camera';
-            
-            const awayFromCameraDiv = document.createElement('div');
-            awayFromCameraDiv.className = 'radio-group';
-            awayFromCameraDiv.appendChild(awayFromCameraOption);
-            awayFromCameraDiv.appendChild(awayFromCameraLabel);
-            content.appendChild(awayFromCameraDiv);
-    
-            const confirmButton = document.createElement('button');
-            confirmButton.textContent = 'Take Picture';
-            confirmButton.className = 'capture_image_popup-confirm-button';
-            confirmButton.onclick = () => {
-                const selectedOption = document.querySelector('input[name="cameraDirection"]:checked');
-                if (selectedOption) {
-                    resolve(selectedOption.value);
-                    document.body.removeChild(popup);
-                    document.body.removeChild(background);
-                } else {
-                    alert('Please select an option.');
-                }
+            const payload = {
+                datasetMode: datasetMode,
+                datasetName: datasetName,
+                cameraDirection: cameraDirection
             };
-            content.appendChild(confirmButton);
     
-            popup.appendChild(content);
-            document.body.appendChild(background);
-            document.body.appendChild(popup);
-        });
+            const createDatasetElement = document.getElementById('CreateDataset');
     
-        const payload = {
-            datasetMode: datasetMode,
-            datasetName: datasetName,
-            cameraDirection: cameraDirection // Add this line to include the new data
-        };
+            const progressDiv = document.createElement('div');
+            progressDiv.className = 'progress-display';
+            progressDiv.style.position = 'fixed';
+            progressDiv.style.top = '10%';
+            progressDiv.style.left = '50%';
+            progressDiv.style.transform = 'translateX(-50%)';
+            progressDiv.style.backgroundColor = 'black';
+            progressDiv.style.color = 'white';
+            progressDiv.style.padding = '10px 20px';
+            progressDiv.style.fontSize = '24px';
+            progressDiv.style.zIndex = '1000';
+            document.body.appendChild(progressDiv);
     
-        console.log('Sending payload:', payload);
-    
-        const createDatasetElement = document.getElementById('CreateDataset');
-    
-        // Create a flash div and append it to the createDatasetElement
-        var flashDiv = '';
-        if (flash_status === 'on')
-        {
-            flashDiv = document.createElement('div');
-            flashDiv.className = 'flash';
-            createDatasetElement.appendChild(flashDiv);
-        }
-    
-        // Helper function to ensure minimum duration
-        const minimumDuration = (duration) => {
-            return new Promise(resolve => setTimeout(resolve, duration));
-        };
-    
-        for (let i = 0; i < nr_images; i++) {
-            try {
-                // Wait for at least 500ms before making the API call
-                // await minimumDuration(500);
-    
-                // Make the API call
-                const response = await fetch('/backend/capture-images', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-    
-                if (response.ok) {
-                    const result = await response.json();
-                    console.log(result.message);
-                } else {
-                    const errorData = await response.json();
-                    console.log(`Failed to capture images: ${errorData.error}`);
-                }
-            } catch (error) {
-                console.error('Error capturing images:', error);
-                alert('Error capturing images.');
-            } finally {
-                // Mimic camera flashes
-                if (flash_status === 'on')
-                {
-                    setTimeout(() => {
-                        flashDiv.classList.remove('flash');
-                        setTimeout(() => {
-                            flashDiv.classList.add('flash');
-                            setTimeout(() => {
-                                flashDiv.classList.remove('flash');
-                                if (i === nr_images - 1) { // Remove flashDiv only after the last image is captured
-                                    createDatasetElement.removeChild(flashDiv);
-                                }
-                            }, 100); // Duration of the second flash
-                        }, 100); // Interval between the two flashes
-                    }, 100); // Duration of the first flash
-                }      
+            let flashDiv = '';
+            if (flash_status === 'on') {
+                flashDiv = document.createElement('div');
+                flashDiv.className = 'flash';
+                createDatasetElement.appendChild(flashDiv);
             }
-        }
-    }    
+    
+            const minimumDuration = (duration) => {
+                return new Promise(resolve => setTimeout(resolve, duration));
+            };
+    
+            for (let i = 0; i < nr_images; i++) {
+                progressDiv.textContent = `Image ${i + 1}/${nr_images}`;
+                try {
+                    const response = await fetch('/backend/capture-images', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+    
+                    if (response.ok) {
+                        const result = await response.json();
+                        console.log(result.message);
+                    } else {
+                        const errorData = await response.json();
+                        console.log(`Failed to capture images: ${errorData.error}`);
+                    }
+                } catch (error) {
+                    console.error('Error capturing images:', error);
+                    alert('Error capturing images.');
+                } finally {
+                    if (flash_status === 'on') {
+                        setTimeout(() => {
+                            flashDiv.classList.remove('flash');
+                            setTimeout(() => {
+                                flashDiv.classList.add('flash');
+                                setTimeout(() => {
+                                    flashDiv.classList.remove('flash');
+                                    if (i === nr_images - 1) {
+                                        createDatasetElement.removeChild(flashDiv);
+                                    }
+                                }, 100);
+                            }, 100);
+                        }, 100);
+                    }
+                }
+    
+                await minimumDuration(500);  // Ensure at least 500ms between images
+            }
+    
+            document.body.removeChild(progressDiv);
+        };
+    
+        await captureSet('lookingAtCamera', 'Set 1: Direct your head in any direction and keep your eyes pointed at the camera.');
+        await captureSet('awayFromCamera', 'Set 2: Keep your head in the same direction as Set 1 and point your eyes in the same direction as your head.');
+    }
+    
+     
     
 
     async function toggleCamera() {
