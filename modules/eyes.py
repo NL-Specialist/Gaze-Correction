@@ -233,7 +233,6 @@ class Eyes:
                     logging.error(f"Error in overlay_image: {e}")
                     raise
 
-                    
             overlay_image(self.left_eye_bbox, self.left_eye_img)
             overlay_image(self.right_eye_bbox, self.right_eye_img)
             

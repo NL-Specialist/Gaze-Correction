@@ -35,17 +35,22 @@ def favicon():
 
 @app.route('/backend/get_datasets', methods=['GET'])
 def get_datasets():
-    # List all entries in the directory
-    entries         =       os.listdir(DATASETS_PATH)
-    
-    # Filter out files, keep only directories
-    datasets        =       [entry for entry in entries if os.path.isdir(os.path.join(DATASETS_PATH, entry))]
-    
-    # Create a list of dictionaries for the datasets
-    datasets_list   =       [{'value': dataset, 'text': dataset} for dataset in datasets]
-    
-    # Return the list as JSON
-    return jsonify(datasets_list)
+    try:
+        # List all entries in the directory
+        entries         =       os.listdir(DATASETS_PATH)
+
+        # Filter out files, keep only directories
+        datasets        =       [entry for entry in entries if os.path.isdir(os.path.join(DATASETS_PATH, entry))]
+
+        # Create a list of dictionaries for the datasets
+        datasets_list   =       [{'value': dataset, 'text': dataset} for dataset in datasets]
+
+        # Return the list as JSON
+        return jsonify(datasets_list)
+    except Exception as e:
+        datasets_list = []
+        print("Error in get_dataset: ", e)
+        return jsonify(datasets_list)
 
 @app.route('/backend/download_dataset/<dataset_name>', methods=['GET'])
 def download_dataset(dataset_name):
@@ -226,4 +231,4 @@ def handle_start_video(data):
 
 
 if __name__ == "__main__":
-    socketio.run(app, host='127.0.0.1', port=8000, debug=False)
+    socketio.run(app, host='127.0.0.1', port=8021, debug=False)
