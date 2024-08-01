@@ -73,12 +73,12 @@ class EYES_GAN_DATASET:
         input_image, real_image = self.resize(input_image, real_image, resize_height, resize_width)
         input_image, real_image = self.random_crop(input_image, real_image)  # Random cropping to target size
 
-        if tf.random.uniform(()) > 0.5:
-            if self.DEBUG:
-                print("Randomly flipping images")
-            # Random mirroring
-            input_image = tf.image.flip_left_right(input_image)
-            real_image = tf.image.flip_left_right(real_image)
+        # if tf.random.uniform(()) > 0.5:
+        #     if self.DEBUG:
+        #         print("Randomly flipping images")
+        #     # Random mirroring
+        #     input_image = tf.image.flip_left_right(input_image)
+        #     real_image = tf.image.flip_left_right(real_image)
 
         return input_image, real_image
 
@@ -117,81 +117,144 @@ class EYES_GAN_DATASET:
         """Get all image paths for the specified dataset, image type, and eye type."""
         if self.DEBUG:
             print(f"Getting image paths for {image_type} images ({eye_type} eye)")
+        
         images_file_path = os.path.join(self.DATASET_PATH, "away") if image_type == "input" else os.path.join(self.DATASET_PATH, "at_camera")
         
         train_path = os.path.join(images_file_path, "train")
         test_path = os.path.join(images_file_path, "test")
         val_path = os.path.join(images_file_path, "validate")
         
-        def load_images(path):
+        def load_images(path, eye_type):
             if self.DEBUG:
                 print(f"Loading images from directory: {path}")
             image_paths = []
             for root, dirs, files in os.walk(path):
-                for file in files:
-                    if file.endswith('.jpg') and eye_type in file:
-                        image_paths.append(os.path.join(root, file))
+                for dir in dirs:
+                    left_eye_path = os.path.join(root, dir, 'left_eye.jpg')
+                    right_eye_path = os.path.join(root, dir, 'right_eye.jpg')
+
+                    if eye_type == "left" and os.path.isfile(left_eye_path):
+                        image_paths.append(left_eye_path)
+                    elif eye_type == "right" and os.path.isfile(right_eye_path):
+                        image_paths.append(right_eye_path)
+                    elif eye_type == "both":
+                        if os.path.isfile(left_eye_path):
+                            image_paths.append(left_eye_path)
+                        if os.path.isfile(right_eye_path):
+                            image_paths.append(right_eye_path)
+
             return image_paths
         
-        train_images = load_images(train_path)
-        test_images = load_images(test_path)
-        val_images = load_images(val_path)
+        train_images = load_images(train_path, eye_type)
+        test_images = load_images(test_path, eye_type)
+        val_images = load_images(val_path, eye_type)
         
         if self.DEBUG:
             print(f"Number of train images loaded: {len(train_images)}")
             print(f"Number of test images loaded: {len(test_images)}")
             print(f"Number of val images loaded: {len(val_images)}")
-
+    
         return train_images, test_images, val_images
 
-    def prepare_datasets(self):
+
+    def prepare_datasets(self, eye_type='left'):
         ####### Split Input Images #######
-        # Input Left Eye Split
-        input_train_left_eye_images, input_test_left_eye_images, input_val_left_eye_images = self.get_image_paths("input", eye_type="left")
-        # Input Right Eye Split
-        input_train_right_eye_images, input_test_right_eye_images, input_val_right_eye_images = self.get_image_paths("input", eye_type="right")
-
+        if eye_type == 'left' or eye_type == 'both':
+            # Input Left Eye Split
+            input_train_left_eye_images, input_test_left_eye_images, input_val_left_eye_images = self.get_image_paths("input", eye_type="left")
+        else:
+            input_train_left_eye_images = []
+            input_test_left_eye_images = []
+            input_val_left_eye_images = []
+        
+        if eye_type == 'right' or eye_type == 'both':
+            # Input Right Eye Split
+            input_train_right_eye_images, input_test_right_eye_images, input_val_right_eye_images = self.get_image_paths("input", eye_type="right")
+        else:
+            input_train_right_eye_images = []
+            input_test_right_eye_images = []
+            input_val_right_eye_images = []
+        
         ####### Split Real Images #######
-        # Real Left Eye Split
-        real_train_left_eye_images, real_test_left_eye_images, real_val_left_eye_images = self.get_image_paths("real", eye_type="left")
-        # Real Right Eye Split
-        real_train_right_eye_images, real_test_right_eye_images, real_val_right_eye_images = self.get_image_paths("real", eye_type="right")
+        if eye_type == 'left' or eye_type == 'both':
+            # Real Left Eye Split
+            real_train_left_eye_images, real_test_left_eye_images, real_val_left_eye_images = self.get_image_paths("real", eye_type="left")
+        else:
+            real_train_left_eye_images = []
+            real_test_left_eye_images = []
+            real_val_left_eye_images = []
+        
+        if eye_type == 'right' or eye_type == 'both':
+            # Real Right Eye Split
+            real_train_right_eye_images, real_test_right_eye_images, real_val_right_eye_images = self.get_image_paths("real", eye_type="right")
+        else:
+            real_train_right_eye_images = []
+            real_test_right_eye_images = []
+            real_val_right_eye_images = []
+        
+        # Combine the image paths for inputs and targets separately
+        train_inputs = input_train_left_eye_images + input_train_right_eye_images
+        test_inputs = input_test_left_eye_images + input_test_right_eye_images
+        val_inputs = input_val_left_eye_images + input_val_right_eye_images
+        
+        train_targets = real_train_left_eye_images + real_train_right_eye_images
+        test_targets = real_test_left_eye_images + real_test_right_eye_images
+        val_targets = real_val_left_eye_images + real_val_right_eye_images
 
-        # Combine the image paths
-        train_images = input_train_left_eye_images + input_train_right_eye_images + real_train_left_eye_images + real_train_right_eye_images
-        test_images = input_test_left_eye_images + input_test_right_eye_images + real_test_left_eye_images + real_test_right_eye_images
-        val_images = input_val_left_eye_images + input_val_right_eye_images + real_val_left_eye_images + real_val_right_eye_images
 
         if self.DEBUG:
-            print(f"Total training images: {len(train_images)}")
-            print(f"Total testing images: {len(test_images)}")
-            print(f"Total validation images: {len(val_images)}")
+            print(f"Total training inputs: {len(train_inputs)}")
+            print(f"Total testing inputs: {len(test_inputs)}")
+            print(f"Total validation inputs: {len(val_inputs)}")
+            print(f"Total training targets: {len(train_targets)}")
+            print(f"Total testing targets: {len(test_targets)}")
+            print(f"Total validation targets: {len(val_targets)}")
 
         # Convert lists to TensorFlow datasets
-        train_dataset = tf.data.Dataset.from_tensor_slices(train_images)
-        test_dataset = tf.data.Dataset.from_tensor_slices(test_images)
-        val_dataset = tf.data.Dataset.from_tensor_slices(val_images)
+        train_input_dataset = tf.data.Dataset.from_tensor_slices(train_inputs)
+        test_input_dataset = tf.data.Dataset.from_tensor_slices(test_inputs)
+        val_input_dataset = tf.data.Dataset.from_tensor_slices(val_inputs)
+
+        train_target_dataset = tf.data.Dataset.from_tensor_slices(train_targets)
+        test_target_dataset = tf.data.Dataset.from_tensor_slices(test_targets)
+        val_target_dataset = tf.data.Dataset.from_tensor_slices(val_targets)
 
         # Map the datasets to the respective loading functions
-        train_dataset = train_dataset.map(self.load_image_train, num_parallel_calls=tf.data.AUTOTUNE)
-        train_dataset = train_dataset.shuffle(self.BUFFER_SIZE)
-        train_dataset = train_dataset.batch(self.BATCH_SIZE)
+        train_input_dataset = train_input_dataset.map(self.load_image_train, num_parallel_calls=tf.data.AUTOTUNE)
+        train_input_dataset = train_input_dataset.shuffle(self.BUFFER_SIZE)
+        train_input_dataset = train_input_dataset.batch(self.BATCH_SIZE)
 
-        test_dataset = test_dataset.map(self.load_image_test)
-        test_dataset = test_dataset.batch(self.BATCH_SIZE)
+        test_input_dataset = test_input_dataset.map(self.load_image_test)
+        test_input_dataset = test_input_dataset.batch(self.BATCH_SIZE)
 
-        val_dataset = val_dataset.map(self.load_image_test)
-        val_dataset = val_dataset.batch(self.BATCH_SIZE)
+        val_input_dataset = val_input_dataset.map(self.load_image_test)
+        val_input_dataset = val_input_dataset.batch(self.BATCH_SIZE)
+
+        train_target_dataset = train_target_dataset.map(self.load_image_train, num_parallel_calls=tf.data.AUTOTUNE)
+        train_target_dataset = train_target_dataset.shuffle(self.BUFFER_SIZE)
+        train_target_dataset = train_target_dataset.batch(self.BATCH_SIZE)
+
+        test_target_dataset = test_target_dataset.map(self.load_image_test)
+        test_target_dataset = test_target_dataset.batch(self.BATCH_SIZE)
+
+        val_target_dataset = val_target_dataset.map(self.load_image_test)
+        val_target_dataset = val_target_dataset.batch(self.BATCH_SIZE)
 
         print("Training, testing, and validation datasets are ready.")
 
+        # Combine input and target datasets into tuples
+        train_dataset = tf.data.Dataset.zip((train_input_dataset, train_target_dataset))
+        test_dataset = tf.data.Dataset.zip((test_input_dataset, test_target_dataset))
+        val_dataset = tf.data.Dataset.zip((val_input_dataset, val_target_dataset))
+
         # Summarize dataset details in a final table
         data_summary = {
-            "Category": ["Training Images", "Testing Images", "Validation Images"],
-            "Total Images": [len(train_images), len(test_images), len(val_images)]
+            "Category": ["Training Inputs", "Testing Inputs", "Validation Inputs", "Training Targets", "Testing Targets", "Validation Targets"],
+            "Total Images": [len(train_inputs), len(test_inputs), len(val_inputs), len(train_targets), len(test_targets), len(val_targets)]
         }
 
         summary_df = pd.DataFrame(data_summary)
         print(summary_df)
 
         return train_dataset, test_dataset, val_dataset
+

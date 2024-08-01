@@ -105,12 +105,18 @@ class EYES_GAN_GENERATOR:
 
     def generate_and_save_image(self, input_image, save_path='generated_image.png'):
         """Generates an image using the generator and saves it to the specified path."""
-        gen_output = self.generator(input_image, training=False)
-        plt.imshow(gen_output[0, ...])
-        plt.axis('off')
-        plt.savefig(save_path)
-        plt.close()
-        print(f"Generated image saved to {save_path}")
+        gen_output = self.generator(input_image, training=True)
+        def save_image(image, save_path):
+            if len(image.shape) == 4:
+                image = tf.squeeze(image, axis=0)
+            image = (image + 1.0) * 127.5
+            image = tf.cast(image, tf.uint8)
+            encoded_image = tf.image.encode_jpeg(image)
+            tf.io.write_file(save_path, encoded_image)
+            print(f"Generated image saved to {save_path}")
+            
+        save_image(gen_output, save_path)
+        return gen_output
 
     @staticmethod
     def generator_loss(disc_generated_output, gen_output, target):

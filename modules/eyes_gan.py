@@ -5,6 +5,7 @@ import datetime
 from IPython import display
 import time
 from tqdm import tqdm
+import random
 
 class EYES_GAN:
     def __init__(self, generator, discriminator):
@@ -75,7 +76,7 @@ class EYES_GAN:
 
     def fit(self, train_ds, test_ds, epochs, checkpoint_interval=1000):
         example_input, example_target = next(iter(test_ds.take(1)))
-        
+        example_input, example_target  = example_input[0], example_target[0] 
         # Determine steps per epoch dynamically
         steps_per_epoch = tf.data.experimental.cardinality(train_ds).numpy()
         print(f'Steps per epoch: {steps_per_epoch}')
@@ -92,7 +93,7 @@ class EYES_GAN:
     
             for step, (input_image, target) in progress_bar:
                 global_step = epoch * steps_per_epoch + step
-                gen_total_loss, gen_gan_loss, gen_l1_loss, disc_loss = self.train_step(input_image, target, global_step)
+                gen_total_loss, gen_gan_loss, gen_l1_loss, disc_loss = self.train_step(input_image[0], target[0], global_step)
     
                 if (step + 1) % 100 == 0:
                     progress_bar.set_postfix({
@@ -103,11 +104,11 @@ class EYES_GAN:
                     })
     
                 if (step + 1) % checkpoint_interval == 0:
-                    self.generate_images(example_input, example_target, epoch=epoch, step=step + 1)
+                    self.generate_images(input_image[0], target[0], epoch=epoch, step=step + 1)
                     self.checkpoint.save(file_prefix=self.checkpoint_prefix)
                     print(f"Checkpoint saved at step {step + 1} of epoch {epoch + 1}")
     
-            self.generate_images(example_input, example_target, epoch=epoch, step=steps_per_epoch)
+            self.generate_images(input_image[0], target[0], epoch=epoch, step=steps_per_epoch)
             self.checkpoint.save(file_prefix=self.checkpoint_prefix)
             print(f"Checkpoint saved at the end of epoch {epoch + 1}")
     
@@ -124,23 +125,40 @@ class EYES_GAN:
         else:
             print("No checkpoint found.")
 
-    def validate(self, val_dataset, save_dir='validated_images'):
+    def validate(self, val_dataset, save_dir='validated_images', validation_dataset_percentage=10):
         print("Running validation...")
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
             print(f"Directory created: {save_dir}")
 
-        for i, (inp, tar) in enumerate(val_dataset):
-            print(f"Processing data {i}")
-            print(f"Input tensor structure: {type(inp)}, shape: {inp.shape}")
-            print(f"Target tensor structure: {type(tar)}, shape: {tar.shape}")
+        try:
+            # Determine the number of samples in the validation dataset
+            total_samples = sum(1 for _ in val_dataset)
+            num_samples_to_validate = max(1, total_samples * validation_dataset_percentage // 100)
 
-            if not isinstance(inp, tf.Tensor):
-                raise ValueError(f"Expected tensor for input, got {type(inp)}")
-            if not isinstance(tar, tf.Tensor):
-                raise ValueError(f"Expected tensor for target, got {type(tar)}")
-            
-            self.generate_images(inp, tar, save_dir=save_dir, epoch=0, step=i)
-        
-        print(f"Validation complete. Images saved to {save_dir}.")
-        self.summary_writer.close()
+            # Take a percentage of the dataset for validation
+            val_dataset = val_dataset.take(num_samples_to_validate)
+
+            for i, (inp, tar) in enumerate(val_dataset):
+                inp = inp[0]
+                tar = tar[0]
+                print(f"Processing data {i}")
+                print(f"Input tensor structure: {type(inp)}, shape: {inp.shape}")
+                print(f"Target tensor structure: {type(tar)}, shape: {tar.shape}")
+
+                if not isinstance(inp, tf.Tensor):
+                    raise ValueError(f"Expected tensor for input, got {type(inp)}")
+                if not isinstance(tar, tf.Tensor):
+                    raise ValueError(f"Expected tensor for target, got {type(tar)}")
+
+                self.generate_images(inp, tar, save_dir=save_dir, epoch=0, step=i)
+
+            print(f"Validation complete. Images saved to {save_dir}.")
+        except ValueError as ve:
+            print(f"ValueError: {ve}")
+        except IndexError as ie:
+            print(f"IndexError: {ie}")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+        finally:
+            self.summary_writer.close()
