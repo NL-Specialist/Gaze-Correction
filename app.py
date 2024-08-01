@@ -195,15 +195,31 @@ def camera_status():
 def handle_start_video(data):
     try:
         stream = data.get('stream')
-        print("stream: ", stream)
+        print("Stream: ", stream)
+        
         while camera_state['camera_on']:
             frame = camera_module.get_frame(stream)
+            
             if frame:
                 if stream == "live-video-left-and-right-eye":
-                    if ('left_eye' in frame) and ('right_eye' in frame):
-                        socketio.emit(stream, {'type': 'left_and_right_eye', 'frame': frame})
+                    if 'left_eye' in frame and 'right_eye' in frame:
+                        # Emit both left and right eye frames
+                        socketio.emit(stream, {
+                            'type': 'left_and_right_eye',
+                            'left_eye': frame['left_eye'],
+                            'right_eye': frame['right_eye']
+                        })
+                    else:
+                        logging.warning("Left or right eye frame missing in 'live-video-left-and-right-eye' stream")
                 else:
-                    socketio.emit(stream, {'type': stream, 'frame': frame})
+                    # Emit the frame for other streams
+                    socketio.emit(stream, {
+                        'type': stream,
+                        'frame': frame
+                    })
+            else:
+                logging.warning("No frame received from get_frame() method")
+    
     except Exception as e:
         logging.error(f"Error in start_video: {e}")
 

@@ -555,23 +555,23 @@ document.addEventListener('DOMContentLoaded', (event) => {
                     console.error('Error capturing images:', error);
                     alert('Error capturing images.');
                 } finally {
-                    if (flash_status === 'on') {
-                        setTimeout(() => {
-                            flashDiv.classList.remove('flash');
-                            setTimeout(() => {
-                                flashDiv.classList.add('flash');
-                                setTimeout(() => {
-                                    flashDiv.classList.remove('flash');
-                                    if (i === nr_images - 1) {
-                                        createDatasetElement.removeChild(flashDiv);
-                                    }
-                                }, 100);
-                            }, 100);
-                        }, 100);
-                    }
+                    // if (flash_status === 'on') {
+                    //     setTimeout(() => {
+                    //         flashDiv.classList.remove('flash');
+                    //         setTimeout(() => {
+                    //             flashDiv.classList.add('flash');
+                    //             setTimeout(() => {
+                    //                 flashDiv.classList.remove('flash');
+                    //                 if (i === nr_images - 1) {
+                    //                     createDatasetElement.removeChild(flashDiv);
+                    //                 }
+                    //             }, 100);
+                    //         }, 100);
+                    //     }, 100);
+                    // }
                 }
     
-                await minimumDuration(500);  // Ensure at least 500ms between images
+                // await minimumDuration(500);  // Ensure at least 500ms between images
             }
     
             document.body.removeChild(progressDiv);
@@ -579,6 +579,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
     
         await captureSet('lookingAtCamera', 'Set 1: Direct your head in any direction and keep your eyes pointed at the camera.');
         await captureSet('awayFromCamera', 'Set 2: Keep your head in the same direction as Set 1 and point your eyes in the same direction as your head.');
+        alert("Dataset Captured Successfully")
     }
     
      

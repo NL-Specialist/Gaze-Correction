@@ -1,1 +1,5 @@
 /datasets
+/segment-anything-2
+/output_video_segmented.mp4
+/output.mp4
+sam2_b.pt

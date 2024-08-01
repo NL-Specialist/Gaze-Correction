@@ -5,6 +5,7 @@ import numpy as np
 import dlib
 import logging
 import os
+import requests
 
 class Eyes:
     def __init__(self):
@@ -14,8 +15,8 @@ class Eyes:
                                                              min_detection_confidence=0.5,
                                                              min_tracking_confidence=0.5)
             self.drawing_spec = mp.solutions.drawing_utils.DrawingSpec(thickness=1, circle_radius=1)
-            self.fixed_box_height = 32  # Fixed bounding box height
-            self.fixed_box_width = 64   # Fixed bounding box width
+            self.fixed_box_height = 25  # Fixed bounding box height
+            self.fixed_box_width = 50   # Fixed bounding box width
             self.offset_y = 20  # Offset to move the bounding box up
             self.left_eye_offset_x = 0  # Offset to move the left eye bounding box left/right
             self.left_eye_offset_y = 5  # Offset to move the left eye bounding box up/down
@@ -32,7 +33,9 @@ class Eyes:
             self.right_eye_img = None
 
             self.gaze_classifier = GazeClassifier()
-            
+            response = requests.post("http://192.168.0.58:8021/load_model/")
+            print(response.json())
+
             # self.set_default_overlay_eyes()
         except Exception as e:
             logging.error(f"Error initializing Eyes: {e}")
@@ -91,8 +94,8 @@ class Eyes:
 
     def get_left_eye_region(self, frame, show_eyes=False):
         try:
+            frame = self.draw_selected_landmarks(frame, show_eyes=show_eyes, show_mouth=False, show_face_outline=False, show_text=False)
             if self.left_eye_bbox:
-                frame = self.draw_selected_landmarks(frame, show_eyes=show_eyes, show_mouth=False, show_face_outline=False, show_text=False)
                 (x_min, y_min), (x_max, y_max) = self.left_eye_bbox
                 left_eye_frame = frame[y_min:y_max, x_min:x_max]
                 return left_eye_frame
@@ -103,8 +106,8 @@ class Eyes:
 
     def get_right_eye_region(self, frame, show_eyes=False):
         try:
+            frame = self.draw_selected_landmarks(frame, show_eyes=show_eyes, show_mouth=False, show_face_outline=False, show_text=False)
             if self.right_eye_bbox:
-                frame = self.draw_selected_landmarks(frame, show_eyes=show_eyes, show_mouth=False, show_face_outline=False, show_text=False)
                 (x_min, y_min), (x_max, y_max) = self.right_eye_bbox
                 right_eye_frame = frame[y_min:y_max, x_min:x_max]
                 return right_eye_frame
@@ -152,7 +155,7 @@ class Eyes:
             logging.error(f"Error in draw_selected_landmarks: {e}")
             raise
 
-    def correct_gaze(self, frame):
+    def correct_gaze(self, frame, corrected_left_eye_path, corrected_right_eye_path):
         try:
             if self.should_correct_gaze:
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -160,11 +163,17 @@ class Eyes:
                 if results.multi_face_landmarks:
                     for face_landmarks in results.multi_face_landmarks:
                         self._calculate_eye_boxes(face_landmarks, frame)
+
+                        # Load the corrected eye images from the provided paths
+                        self.left_eye_img = cv2.imread(corrected_left_eye_path)
+                        self.right_eye_img = cv2.imread(corrected_right_eye_path)
+
                         frame = self._overlay_eye_images(frame)
             return frame
         except Exception as e:
             logging.error(f"Error in correct_gaze: {e}")
             raise
+
 
     def _calculate_eye_boxes(self, face_landmarks, frame):
         try:
@@ -218,13 +227,15 @@ class Eyes:
                             eye_region[:, :, c] = (alpha_s * eye_img_resized[:, :, c] +
                                                    alpha_l * eye_region[:, :, c])
                     else:
+
                         frame[y_min:y_max, x_min:x_max] = eye_img_resized
                 except Exception as e:
                     logging.error(f"Error in overlay_image: {e}")
                     raise
 
-            # overlay_image(self.left_eye_bbox, self.left_eye_img)
-            # overlay_image(self.right_eye_bbox, self.right_eye_img)
+                    
+            overlay_image(self.left_eye_bbox, self.left_eye_img)
+            overlay_image(self.right_eye_bbox, self.right_eye_img)
             
             return frame
         except Exception as e:
