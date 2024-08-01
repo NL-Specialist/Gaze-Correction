@@ -33,7 +33,7 @@ class Eyes:
 
             self.gaze_classifier = GazeClassifier()
             
-            self.set_default_overlay_eyes()
+            # self.set_default_overlay_eyes()
         except Exception as e:
             logging.error(f"Error initializing Eyes: {e}")
             raise

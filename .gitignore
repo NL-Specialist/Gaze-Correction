@@ -1,1 +1,13 @@
 /datasets
+/validated_images
+/Dataset.zip
+/image_checkpoints
+/training_checkpoints
+/logs
+/.history
+/Duncan
+/full_frame_CLASSIFIED.jpg
+/full_frame.jpg
+/generated_image.png
+/image_CLASSIFIED.png
+/image.png
