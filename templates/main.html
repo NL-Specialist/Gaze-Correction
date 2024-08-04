@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <title>Gaze Correction</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div id="container">
@@ -26,22 +27,67 @@
                 <div id="statusMessage"></div>
             </div>
             <div id="Train" class="tabcontent">
-                <div>
-                    <h2>Training Section</h2>
-                    <p>This is the content for the Training tab.</p>
+                <div class="training-section">
+                    <div class="training-images">
+                        <div class="training-image-block">
+                            <h2>Before Image</h2>
+                            <img id="training-tab-before-image" alt="Before Image">
+                        </div>
+                        <div class="training-image-block">
+                            <h2>After Image</h2>
+                            <img id="training-tab-after-image" alt="After Image">
+                        </div>
+                    </div>
+                    <!-- Stylish Loading Bar -->
+                    <div class="training-loading">
+                        <div class="training-controls">
+                            <button id="training-tab-start-button" onclick="startTraining()">Start</button>
+                            <button id="training-tab-pause-button">Pause</button>
+                            <button id="training-tab-stop-button">Stop</button>
+                        </div>
+                        <div id="training-tab-loading-bar-container">
+                            <div id="training-tab-loading-bar"></div>
+                        </div>
+                        <div id="epoch-progress">| Progress 0% | Epoch 0/0 |</div>
+                    </div>
+                    <div class="training-parameters">
+                        <div class="training-parameter-block">
+                            <h3>Training Inputs</h3>
+                            <label for="training-tab-model-name">Model Name:</label>
+                            <input type="text" id="training-tab-model-name" value="Duncan" placeholder="Enter Model Name" required>
+                            <label for="training-tab-select-dataset">Select Dataset:</label>
+                            <select id="training-tab-select-dataset" required>
+                                <option value="" disabled selected>Select Dataset</option>
+                                <option value="Duncan">Duncan</option>
+                            </select>
+                        </div>
+                        <div class="training-parameter-block">
+                            <h3>Training Parameters</h3>
+                            <label for="training-tab-epochs">Epochs:</label>
+                            <input type="number" id="training-tab-epochs" value="4" placeholder="Enter Number of Epochs" min="1" max="1000" required>
+                            <label for="training-tab-learning-rate">Learning Rate:</label>
+                            <input type="number" id="training-tab-learning-rate" value="0.0002" placeholder="Enter Learning Rate" step="0.0001" min="0.0001" max="1" required>
+                        </div>
+                        <div class="training-graph-block">
+                            <h3>Discriminator Loss</h3>
+                            <canvas id="training-tab-discriminator-loss-graph"></canvas>
+                        </div>
+                        <div class="training-graph-block">
+                            <h3>Generator Loss</h3>
+                            <canvas id="training-tab-generator-loss-graph"></canvas>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </div>            
             <div id="CreateDataset" class="tabcontent">
                 <div id="video-grid">
                     <div id="video1" class="video-panel">
                         <img id="live-video-1" alt="Live Video 1">
                         <button id="bigRedButton"></button>
-                        <button id="flashButton" class="flash-button" onclick="toggleFlash()"" onmousedown="startHold()" onmouseup="stopHold()" onmouseleave="stopHold()">
+                        <button id="flashButton" class="flash-button" onclick="toggleFlash()" onmousedown="startHold()" onmouseup="stopHold()" onmouseleave="stopHold()">
                             <img id="flashIcon" src="/static/flash_on.png" alt="Flash Icon">
                         </button>
                     </div>
-                    
-                                     
                     <div id="settings-panel" class="panel">
                         <label>
                             <input type="radio" name="datasetMode" value="new" onclick="toggleDatasetMode()" checked> New Dataset
@@ -49,11 +95,9 @@
                         <label>
                             <input type="radio" name="datasetMode" value="existing" onclick="toggleDatasetMode()"> Existing Dataset
                         </label>
-
                         <div id="newDatasetOptions" class="hidden">
                             <label for="datasetName" id="datasetNameLabel">Dataset Name:</label>
                             <input type="text" id="datasetName" name="datasetName">
-
                             <button class="dataset_buttons" id="start" onclick="startNewDataset()">Create</button>
                         </div>
                         <div id="existingDatasetOptions" class="hidden">
@@ -63,7 +107,7 @@
                             </select>
                             <button class="dataset_buttons" id="startExistingDatasetButton">Start</button>
                             <button class="dataset_buttons" id="downloadDataset" onclick="downloadDataset()">Download</button>
-                        </div>                     
+                        </div>
                     </div>
                     <div id="video3" class="video-panel">
                         <img id="live-video-left-eye" alt="Left Eye View">

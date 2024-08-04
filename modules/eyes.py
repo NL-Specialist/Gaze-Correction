@@ -33,9 +33,13 @@ class Eyes:
             self.right_eye_img = None
 
             self.gaze_classifier = GazeClassifier()
-            response = requests.post("http://192.168.0.58:8021/load_model/")
-            print(response.json())
 
+            try:
+                response = requests.post("http://192.168.0.58:8021/load_model/")
+                if response.status_code == 200:
+                    print(response.status())
+            except Exception as e:
+                print("Error loading GAN: ", e)
             # self.set_default_overlay_eyes()
         except Exception as e:
             logging.error(f"Error initializing Eyes: {e}")

@@ -12,6 +12,7 @@ class CameraModule:
     def __init__(self):
         self.camera_on = False
         self.camera = None
+        self.device_nr = 1
         self.eyes_processor = Eyes()
         self.frame_queue = queue.Queue(maxsize=10)
         self.camera_thread = None
@@ -45,10 +46,12 @@ class CameraModule:
                     time.sleep(1)
                 return camera
 
+
             self.camera = try_camera(1)
             if not self.camera.isOpened():
                 logging.error("Failed to open camera 1, trying camera 0")
-                self.camera = try_camera(0)
+                self.device_nr = 0
+                self.camera = try_camera(self.device_nr)
 
             if not self.camera.isOpened():
                 logging.error("Failed to open camera 0")
