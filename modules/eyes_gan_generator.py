@@ -105,6 +105,7 @@ class EYES_GAN_GENERATOR:
 
     def generate_and_save_image(self, input_image, save_path='generated_image.png'):
         """Generates an image using the generator and saves it to the specified path."""
+        print("Predicting Images...")
         gen_output = self.generator(input_image, training=True)
         def save_image(image, save_path):
             if len(image.shape) == 4:
@@ -113,7 +114,7 @@ class EYES_GAN_GENERATOR:
             image = tf.cast(image, tf.uint8)
             encoded_image = tf.image.encode_jpeg(image)
             tf.io.write_file(save_path, encoded_image)
-            print(f"Generated image saved to {save_path}")
+            # print(f"Generated image saved to {save_path}")
             
         save_image(gen_output, save_path)
         return gen_output
