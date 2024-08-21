@@ -18,6 +18,12 @@
         </div>        
         <div id="main-content">
             <div id="Test" class="tabcontent" style="display: block;">
+                <div class="correction-model-select-block">
+                    <select id="correction-select-model">
+                        <option value="" disabled selected>Select Model</option>
+                        <option value="disabled">Disabled</option>
+                    </select>
+                </div>
                 <div id="left-panel" class="panel">
                     <img id="live-video-left" alt="Live Video Left">
                 </div>
@@ -30,11 +36,15 @@
                 <div class="training-section">
                     <div class="training-images">
                         <div class="training-image-block">
-                            <h2>Before Image</h2>
+                            <h2>Input Image</h2>
                             <img id="training-tab-before-image" alt="Before Image">
                         </div>
                         <div class="training-image-block">
-                            <h2>After Image</h2>
+                            <h2>Target Image</h2>
+                            <img id="training-tab-target-image" alt="Predicted Image">
+                        </div>
+                        <div class="training-image-block">
+                            <h2>Predicted Image</h2>
                             <img id="training-tab-after-image" alt="After Image">
                         </div>
                     </div>
@@ -54,11 +64,10 @@
                         <div class="training-parameter-block">
                             <h3>Training Inputs</h3>
                             <label for="training-tab-model-name">Model Name:</label>
-                            <input type="text" id="training-tab-model-name" value="Duncan" placeholder="Enter Model Name" required>
+                            <input type="text" id="training-tab-model-name" value="Test2_Model" placeholder="Enter Model Name" required>
                             <label for="training-tab-select-dataset">Select Dataset:</label>
                             <select id="training-tab-select-dataset" required>
                                 <option value="" disabled selected>Select Dataset</option>
-                                <option value="Duncan">Duncan</option>
                             </select>
                         </div>
                         <div class="training-parameter-block">

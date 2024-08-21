@@ -132,32 +132,32 @@ class CameraModule:
             if self.latest_frame is None:
                 logging.error("No frame available to capture")
                 raise RuntimeError("Failed to capture frame from queue")
-
+    
             frame = self.latest_frame
-
+    
             # Save full frame
             cv2.imwrite(os.path.join(image_dir, 'full_frame.jpg'), frame)
-
+    
             # Process and save left eye
-            self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame,False)
+            self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame)
             if self.left_eye_frame is not None and self.left_eye_frame.size != 0:
                 cv2.imwrite(os.path.join(image_dir, 'left_eye.jpg'), self.left_eye_frame)
             else:
-                logging.warning("No left eye region found")
-
+                logging.warning("No left eye capture_region found")
+    
             # Process and save right eye
-            self.right_eye_frame = self.eyes_processor.get_right_eye_region(frame,False)
+            self.right_eye_frame = self.eyes_processor.get_right_eye_region(frame)
             if self.right_eye_frame is not None and self.right_eye_frame.size != 0:
                 cv2.imwrite(os.path.join(image_dir, 'right_eye.jpg'), self.right_eye_frame)
             else:
-                logging.warning("No right eye region found")
-
+                logging.warning("No right eye capture_region found")
+    
             logging.debug("Frame capture from queue completed")
         except Exception as e:
             logging.error(f"Error in capture_frame_from_queue: {e}")
             raise
 
-    def get_frame(self, stream):
+    def get_frame(self, stream, active_model):
         try:
             frame_bytes = self.frame_queue.get(timeout=1)
             frame = cv2.imdecode(np.frombuffer(frame_bytes, np.uint8), cv2.IMREAD_COLOR)
@@ -204,61 +204,66 @@ class CameraModule:
                 return None
 
             elif stream == "live-video-right":
-                self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
-                if self.left_eye_frame is not None and self.left_eye_frame.size != 0:
-                    left_eye_image_path = os.path.join('INPUT_EYES', 'left_eye.jpg')
-                    cv2.imwrite(left_eye_image_path, self.left_eye_frame)
+                if not active_model == 'disabled':
+                    # Generate left eye
+                    self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
+                    if self.left_eye_frame is not None and self.left_eye_frame.size != 0:
+                        left_eye_image_path = os.path.join('INPUT_EYES', 'left_eye.jpg')
+                        cv2.imwrite(left_eye_image_path, self.left_eye_frame)
 
-                    ret, buffer = cv2.imencode('.jpg', self.left_eye_frame)
-                    if ret:
-                        with open(left_eye_image_path, "rb") as left_eye_img_file:
-                            files = {"file": left_eye_img_file}
-                            corrected_left_eye_response = requests.post("http://192.168.0.58:8021/generate_image/", files=files)
+                        ret, buffer = cv2.imencode('.jpg', self.left_eye_frame)
+                        if ret:
+                            with open(left_eye_image_path, "rb") as left_eye_img_file:
+                                files = {"file": left_eye_img_file}
+                                corrected_left_eye_response = requests.post("http://192.168.0.58:8021/generate_image/", files=files)
 
-                        if corrected_left_eye_response.status_code == 200:
-                            corrected_left_eye = corrected_left_eye_response.content
-                            left_eye_image_output_path = os.path.join('OUTPUT_EYES', 'corrected_left_eye.jpg')
-                            with open(left_eye_image_output_path, "wb") as f:
-                                f.write(corrected_left_eye)
-                        else:
-                            logging.error("Error: Could not correct Left eye")
-                            ret, buffer = cv2.imencode('.jpg', frame)
-                            if ret:
-                                return buffer.tobytes()
-                else:
-                    logging.warning("No left eye region found")
-                    ret, buffer = cv2.imencode('.jpg', frame)
-                    if ret:
-                        return buffer.tobytes()
+                            if corrected_left_eye_response.status_code == 200:
+                                corrected_left_eye = corrected_left_eye_response.content
+                                left_eye_image_output_path = os.path.join('OUTPUT_EYES', 'corrected_left_eye.jpg')
+                                with open(left_eye_image_output_path, "wb") as f:
+                                    f.write(corrected_left_eye)
+                            else:
+                                logging.error("Error: Could not correct Left eye")
+                                ret, buffer = cv2.imencode('.jpg', frame)
+                                if ret:
+                                    return buffer.tobytes()
+                    else:
+                        logging.warning("No left eye region found")
+                        ret, buffer = cv2.imencode('.jpg', frame)
+                        if ret:
+                            return buffer.tobytes()
+                    
+                    # Generate right eye
+                    # right_eye_image_output_path = None
+                    self.right_eye_frame = self.eyes_processor.get_right_eye_region(frame, False)
+                    if self.right_eye_frame is not None and self.right_eye_frame.size != 0:
+                        right_eye_image_path = os.path.join('INPUT_EYES', 'right_eye.jpg')
+                        cv2.imwrite(right_eye_image_path, self.right_eye_frame)
 
-                self.right_eye_frame = self.eyes_processor.get_right_eye_region(frame, False)
-                if self.right_eye_frame is not None and self.right_eye_frame.size != 0:
-                    right_eye_image_path = os.path.join('INPUT_EYES', 'right_eye.jpg')
-                    cv2.imwrite(right_eye_image_path, self.right_eye_frame)
+                        ret, buffer = cv2.imencode('.jpg', self.right_eye_frame)
+                        if ret:
+                            with open(right_eye_image_path, "rb") as right_eye_img_file:
+                                files = {"file": right_eye_img_file}
+                                corrected_right_eye_response = requests.post("http://192.168.0.58:8021/generate_image/", files=files)
 
-                    ret, buffer = cv2.imencode('.jpg', self.right_eye_frame)
-                    if ret:
-                        with open(right_eye_image_path, "rb") as right_eye_img_file:
-                            files = {"file": right_eye_img_file}
-                            corrected_right_eye_response = requests.post("http://192.168.0.58:8021/generate_image/", files=files)
+                            if corrected_right_eye_response.status_code == 200:
+                                corrected_right_eye = corrected_right_eye_response.content
+                                right_eye_image_output_path = os.path.join('OUTPUT_EYES', 'corrected_right_eye.jpg')
+                                with open(right_eye_image_output_path, "wb") as f:
+                                    f.write(corrected_right_eye)
+                            else:
+                                logging.error("Error: Could not correct Right eye")
+                                ret, buffer = cv2.imencode('.jpg', frame)
+                                if ret:
+                                    return buffer.tobytes()
+                    else:
+                        logging.warning("No right eye region found")
+                        ret, buffer = cv2.imencode('.jpg', frame)
+                        if ret:
+                            return buffer.tobytes()
 
-                        if corrected_right_eye_response.status_code == 200:
-                            corrected_right_eye = corrected_right_eye_response.content
-                            right_eye_image_output_path = os.path.join('OUTPUT_EYES', 'corrected_right_eye.jpg')
-                            with open(right_eye_image_output_path, "wb") as f:
-                                f.write(corrected_right_eye)
-                        else:
-                            logging.error("Error: Could not correct Right eye")
-                            ret, buffer = cv2.imencode('.jpg', frame)
-                            if ret:
-                                return buffer.tobytes()
-                else:
-                    logging.warning("No right eye region found")
-                    ret, buffer = cv2.imencode('.jpg', frame)
-                    if ret:
-                        return buffer.tobytes()
+                    processed_frame = self.eyes_processor.correct_gaze(frame, left_eye_image_output_path, right_eye_image_output_path)
 
-                processed_frame = self.eyes_processor.correct_gaze(frame, left_eye_image_output_path, right_eye_image_output_path)
                 ret, buffer = cv2.imencode('.jpg', frame)
                 if ret:
                     return buffer.tobytes()

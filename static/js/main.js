@@ -144,8 +144,8 @@ function openWebsockets(streams) {
 
                 if (stream === "live-video-left-and-right-eye"){
                     if (data.type === "left_and_right_eye"){
-                        left_eye_arrayBuffer = data.frame['left_eye'];
-                        right_eye_arrayBuffer = data.frame['right_eye'];
+                        left_eye_arrayBuffer = data.left_eye;
+                        right_eye_arrayBuffer = data.right_eye;
 
                         left_eye_blob = new Blob([left_eye_arrayBuffer], { type: 'image/jpeg' });
                         left_eye_url = URL.createObjectURL(left_eye_blob);
@@ -247,13 +247,42 @@ function toggleDatasetMode() {
     }
 }
 
+document.addEventListener('DOMContentLoaded', (event) => {
+    document.getElementById('correction-select-model').addEventListener('change', function () {
+        const selectedModel = this.value;
+        if (selectedModel !== "disabled") {
+            sendSelectedModel(selectedModel);
+        }
+    });
+});
+
+function sendSelectedModel(model) {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/set_correction_model", true);
+    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+    
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                const response = JSON.parse(xhr.responseText);
+                console.log('Success:', response);
+            } else {
+                console.error('Error:', xhr.responseText);
+            }
+        }
+    };
+
+    xhr.send(JSON.stringify({ model: model }));
+}
+
+
 // Function to update the select options
 function updateDatasetOptions() {
     // Create a new XMLHttpRequest object
     const xhr = new XMLHttpRequest();
 
     // Configure it: GET-request for the URL /backend/get_datasets
-    xhr.open('GET', '/backend/get_datasets', true);
+    xhr.open('GET', '/backend/get_models_and_datasets', true);
 
     // Set up the callback function for when the request completes
     xhr.onload = function() {
@@ -263,12 +292,17 @@ function updateDatasetOptions() {
 
             // Get the select element by its id
             const selectElement = document.getElementById('existingDatasets');
+            const trainingSelectElement = document.getElementById('training-tab-select-dataset');
+            const correctionModelSelectElement = document.getElementById('correction-select-model');
+            
 
             // Clear the existing options
             selectElement.innerHTML = '';
+            trainingSelectElement.innerHTML = '';
+            correctionModelSelectElement.innerHTML = '';
 
             // Add new options to the select element
-            newOptions.forEach(function(option) {
+            newOptions.datasets.forEach(function(option) {
                 // Create a new option element
                 const newOption = document.createElement('option');
                 // Set the value and text content
@@ -276,6 +310,34 @@ function updateDatasetOptions() {
                 newOption.textContent = option.text;
                 // Append the new option to the select element
                 selectElement.appendChild(newOption);
+
+                // Create a new option element
+                const newOption2 = document.createElement('option');
+                // Set the value and text content
+                newOption2.value = option.value;
+                newOption2.textContent = option.text;
+                // Append the new option to the select element
+                trainingSelectElement.appendChild(newOption2);
+            });
+
+            // Create a DISABLED option element
+            const newOption3 = document.createElement('option');
+            // Set the value and text content
+            newOption3.value = 'disabled';
+            newOption3.textContent = 'disabled';
+            newOption3.selected = true;
+            // Append the new option to the select element
+            correctionModelSelectElement.appendChild(newOption3);
+
+            // Add new options to the select element models
+            newOptions.models.forEach(function(option) {
+                // Create a new option element
+                const newOption4 = document.createElement('option');
+                // Set the value and text content
+                newOption4.value = option.value;
+                newOption4.textContent = option.text;
+                // Append the new option to the select element
+                correctionModelSelectElement.appendChild(newOption4);
             });
         } else {
             console.error('Failed to fetch dataset options:', xhr.statusText);
@@ -367,16 +429,18 @@ function createPopup(id, message) {
     text.textContent = message;
     content.appendChild(text);
 
-    const closeButton = document.createElement('button');
-    closeButton.className = 'training_popup-close-button';
-    closeButton.textContent = 'Continue';
-    closeButton.onclick = () => {
-        const popupBackground = document.getElementById(`${id}-background`);
-        if (popupBackground) {
-            document.body.removeChild(popupBackground);
-        }
-    };
-    content.appendChild(closeButton);
+    if (id != 'training-started-popup') {
+        const closeButton = document.createElement('button');
+        closeButton.className = 'training_popup-close-button';
+        closeButton.textContent = 'Continue';
+        closeButton.onclick = () => {
+            const popupBackground = document.getElementById(`${id}-background`);
+            if (popupBackground) {
+                document.body.removeChild(popupBackground);
+            }
+        };
+        content.appendChild(closeButton);
+    }
 
     popup.appendChild(content);
     popupBackground.appendChild(popup);
@@ -403,7 +467,7 @@ function startTraining() {
     };
 
     console.log('Sending data to backend:', data);
-    updateProgressBar(0);
+    updateProgressBar(1);
     
     if (eventSource) {
         eventSource.close();
@@ -440,8 +504,9 @@ function startTraining() {
                         if (loadingDatasetPopup) {
                             document.body.removeChild(loadingDatasetPopup);
                         }
-                        createPopup('training-started-popup', 'Dataset loaded successfully. Starting training...');
-                        updateProgressBar(0);
+                        
+                        createPopup('training-started-popup', 'Starting training, please wait...');
+                        updateProgressBar(1);
 
                         updateEpochProgress("0", "0", "0")
                         // Start training after dataset loading is complete
@@ -474,26 +539,27 @@ function startActualTraining(datasetPath, epochs, learningRate) {
     xhr.onreadystatechange = function () {
         if (xhr.readyState === XMLHttpRequest.DONE) {
             if (xhr.status === 200) {
-                console.log('Training started successfully.');
-                const trainingStartedPopup = document.getElementById('training-started-popup-background');
-                if (trainingStartedPopup) {
-                    document.body.removeChild(trainingStartedPopup);
-                }
-
                 eventSource = new EventSource('/training_progress');
                 eventSource.onmessage = function (event) {
                     const data = JSON.parse(event.data);
                     const progress = data.progress;
                     const epoch_count = data.epoch_count; 
                     const total_epochs = data.total_epochs;
-                    const beforeImage = data.before_image;
-                    const afterImage = data.after_image;
+                    const inputImage = data.input_image;
+                    const targetImage = data.target_image;
+                    const predictedImage = data.predicted_image;
                     const generatorLoss = data.generator_loss;
                     const discriminatorLoss = data.discriminator_loss;
 
+                    console.log('Training started successfully.');
+                    const trainingStartedPopup = document.getElementById('training-started-popup-background');
+                    if (trainingStartedPopup) {
+                        document.body.removeChild(trainingStartedPopup);
+                    }
+
                     console.log('Training Progress:', progress);
                     updateProgressBar(progress);
-                    updateImages(beforeImage, afterImage);
+                    updateImages(inputImage, targetImage, predictedImage);
                     updateLossGraphs(generatorLoss, discriminatorLoss);
                     updateEpochProgress(epoch_count, total_epochs, progress);
 
@@ -521,26 +587,52 @@ function updateDatasetFileProgress(currentFile, totalFiles, fileProgresss) {
 
 function updateProgressBar(progress) {
     const progressBar = document.getElementById('training-tab-loading-bar');
+    if (progress === 0){progress = 1}
     progressBar.style.width = progress + '%';
     console.log('Updated progress bar to', progress, '%');
 }
 
 
 // Function to update the before and after images
-function updateImages(beforeImage, afterImage) {
+function updateImages(inputImage, targetImage, predictedImage) {
     const beforeImageElement = document.getElementById('training-tab-before-image');
+    const targetImageElement = document.getElementById('training-tab-target-image');
     const afterImageElement = document.getElementById('training-tab-after-image');
-    console.log("Updating Images, beforeImage: ", beforeImage)
-    console.log("Updating Images, afterImage: ", afterImage)
-    beforeImageElement.src = `${beforeImage}`;
-    afterImageElement.src = `${afterImage}`;
+    console.log("Updating Images...")
+    beforeImageElement.src = `${inputImage}`;
+    targetImageElement.src = `${targetImage}`;
+    afterImageElement.src = `${predictedImage}`;
     console.log('Updated images');
 }
 
-// Call this function when the page loads
-document.addEventListener('DOMContentLoaded', (event) => {
-    updateImages(beforeImage="image_checkpoints/image_input_at_epoch_0_step_489.png", afterImage="image_checkpoints/image_predicted_at_epoch_0_step_489.png");
-});
+// // Call this function when the page loads
+// document.addEventListener('DOMContentLoaded', (event) => {
+//     updateImages(inputImage="models/Test1_Model/image_checkpoints/image_input_at_epoch_0_step_489.png",targetImage="models/Test1_Model/image_checkpoints/image_target_at_epoch_0_step_489.png", predictedImage="models/Test1_Model/image_checkpoints/image_predicted_at_epoch_0_step_489.png");
+// });
+
+function fetchImageList(epoch) {
+    return fetch(`/image_checkpoints/${epoch}/`)
+        .then(response => response.json());
+}
+
+function handleChartClick(event, chart) {
+    const points = chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, false);
+
+    if (points.length) {
+        const firstPoint = points[0];
+        const epoch = chart.data.labels[firstPoint.index];
+
+        fetchImageList(epoch).then(files => {
+            const inputImage = files.input_image_path;
+            const targetImage = files.target_image_path;
+            const predictedImage = files.predicted_image_path;
+
+            updateImages(inputImage, targetImage, predictedImage);
+        });
+    }
+}
+
+
 
 // Function to initialize the loss graphs
 let genLossChart, discLossChart;
@@ -595,11 +687,14 @@ function initializeLossGraphs() {
             datasets: [{
                 label: 'Generator Loss',
                 data: [],
-                borderColor: 'rgba(75, 192, 192, 1)',
+                borderColor: 'rgb(99, 255, 104)',
                 borderWidth: 1
             }]
         },
-        options: commonOptions
+        options: {
+            ...commonOptions,
+            onClick: (event) => handleChartClick(event, genLossChart) // Add click event listener for genLossChart
+        }
     });
 
     discLossChart = new Chart(discLossCtx, {
@@ -613,7 +708,10 @@ function initializeLossGraphs() {
                 borderWidth: 1
             }]
         },
-        options: commonOptions
+        options: {
+            ...commonOptions,
+            onClick: (event) => handleChartClick(event, discLossChart) // Add click event listener for discLossChart
+        }
     });
 }
 
