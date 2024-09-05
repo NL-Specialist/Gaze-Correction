@@ -238,7 +238,7 @@ h1 {
     margin: auto;
     /* margin-top: 1vh; Adjust this value to shift upwards */
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     justify-content: center;
     background: inherit;
     padding: 5px;
@@ -255,6 +255,7 @@ h1 {
     font-family: 'Montserrat', sans-serif;
     font-size: 20px;
     border: 2px solid #ffff;
+    min-width: 100%;
 }
 
 /* Style for the dropdown options */
@@ -277,6 +278,42 @@ h1 {
 
 /* Style for focused dropdown */
 #correction-select-model:focus {
+    outline: none; /* Remove default outline */
+    box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.5); /* Add custom focus shadow */
+}
+
+/* Base style for the checkpoint dropdown */
+#correction-select-model-checkpoint {
+    margin-left: 10px;;
+    background-color: transparent;
+    color: white;
+    border-radius: 10px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 20px;
+    border: 2px solid #ffff;
+    min-width: 60%;
+}
+
+/* Style for the dropdown options */
+#correction-select-model-checkpoint option {
+    background-color: #3d5a80;
+    color: white;
+}
+
+/* Style for hovered options */
+#correction-select-model-checkpoint option:hover {
+    background-color: lightblue;
+    color: white;
+}
+
+/* Style for selected options */
+#correction-select-model-checkpoint option:checked {
+    background-color: #6b727a;
+    color: white;
+}
+
+/* Style for focused dropdown */
+#correction-select-model-checkpoint:focus {
     outline: none; /* Remove default outline */
     box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.5); /* Add custom focus shadow */
 }

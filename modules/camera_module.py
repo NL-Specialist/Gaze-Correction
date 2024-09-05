@@ -14,7 +14,7 @@ class CameraModule:
         self.camera = None
         self.device_nr = 1
         self.eyes_processor = Eyes()
-        self.frame_queue = queue.Queue(maxsize=10)
+        self.frame_queue = queue.Queue(maxsize=1)
         self.camera_thread = None
         self.stop_event = threading.Event()
         self.left_eye_frame = None
@@ -22,6 +22,11 @@ class CameraModule:
         # Attributes to store the latest frames
         self.latest_frame = None
         self.latest_left_and_right_eye_frames = None
+        self.active_model = 'disabled'
+
+    def set_active_model(self, active_model):
+        self.active_model = active_model
+        return True
 
     def toggle_camera(self):
         try:
@@ -45,7 +50,6 @@ class CameraModule:
                 while not camera.isOpened() and (time.time() - start_time < 60):
                     time.sleep(1)
                 return camera
-
 
             self.camera = try_camera(1)
             if not self.camera.isOpened():
@@ -157,7 +161,7 @@ class CameraModule:
             logging.error(f"Error in capture_frame_from_queue: {e}")
             raise
 
-    def get_frame(self, stream, active_model):
+    def get_frame(self, stream):
         try:
             frame_bytes = self.frame_queue.get(timeout=1)
             frame = cv2.imdecode(np.frombuffer(frame_bytes, np.uint8), cv2.IMREAD_COLOR)
@@ -166,15 +170,9 @@ class CameraModule:
                 logging.error("Failed to decode frame bytes into an image")
                 return None
 
-            if stream == "live-video-left":
-                processed_frame = self.eyes_processor.process_frame(frame, show_face_mesh=False, classify_gaze=True, draw_rectangles=False)
-                ret, buffer = cv2.imencode('.jpg', processed_frame)
-                if ret:
-                    return buffer.tobytes()
-                logging.error("Failed to encode processed frame to JPEG")
-                return None
+            
 
-            elif stream == "live-video-left-and-right-eye":
+            if stream == "live-video-left-and-right-eye":
                 frames = {}
 
                 self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
@@ -203,8 +201,30 @@ class CameraModule:
                 logging.error("Failed to encode processed frame to JPEG")
                 return None
 
+            elif stream == "live-video-left":
+                processed_frame = self.eyes_processor.process_frame(frame, show_face_mesh=False, classify_gaze=True, draw_rectangles=False)
+
+                segmented_images_path = os.path.join('SEGMENT_EYES', 'input_image.jpg')
+                cv2.imwrite(segmented_images_path, processed_frame)
+
+                ret, buffer = cv2.imencode('.jpg', processed_frame)
+                if ret:
+                    with open(segmented_images_path, "rb") as segmented_img_file:
+                        files = {"file": segmented_img_file}
+                        remove_eyes_response = requests.post("http://192.168.0.58:8021/remove_eyes/", files=files)
+
+                    if remove_eyes_response.status_code == 200:
+                        remove_eyes = remove_eyes_response.content
+                
+                        ret, buffer = cv2.imencode('.jpg', remove_eyes)
+                        if ret:
+                            return buffer.tobytes()
+                        
+                logging.error("Failed to remove eyes from frame")
+                return None
+
             elif stream == "live-video-right":
-                if not active_model == 'disabled':
+                if not self.active_model == 'disabled' and self.eyes_processor.should_correct_gaze == True:
                     # Generate left eye
                     self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
                     if self.left_eye_frame is not None and self.left_eye_frame.size != 0:
@@ -262,7 +282,7 @@ class CameraModule:
                         if ret:
                             return buffer.tobytes()
 
-                    processed_frame = self.eyes_processor.correct_gaze(frame, left_eye_image_output_path, right_eye_image_output_path)
+                    frame = self.eyes_processor.correct_gaze(frame, left_eye_image_output_path, right_eye_image_output_path)
 
                 ret, buffer = cv2.imencode('.jpg', frame)
                 if ret:

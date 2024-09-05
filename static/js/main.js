@@ -250,11 +250,45 @@ function toggleDatasetMode() {
 document.addEventListener('DOMContentLoaded', (event) => {
     document.getElementById('correction-select-model').addEventListener('change', function () {
         const selectedModel = this.value;
-        if (selectedModel !== "disabled") {
-            sendSelectedModel(selectedModel);
+        const checkpointDropdown = document.getElementById('correction-select-model-checkpoint');
+
+        if (selectedModel === 'disabled')
+        {
+            checkpointDropdown.style.display = "none";
         }
+        else{
+            checkpointDropdown.style.display = "inline-block";
+        }
+
+        sendSelectedModel(selectedModel);
+    });
+
+    document.getElementById('correction-select-model-checkpoint').addEventListener('change', function () {
+        const selectedCheckpoint = this.value;
+
+        sendSelectedCheckpoint(selectedCheckpoint);
     });
 });
+
+function sendSelectedCheckpoint(selectedCheckpoint) {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/set_checkpoint", true);
+    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+    
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                const response = JSON.parse(xhr.responseText);
+                let message = response.message;
+                console.log('Set checkpoint result:', message);
+            } else {
+                console.error('Error:', xhr.responseText);
+            }
+        }
+    };
+
+    xhr.send(JSON.stringify({ checkpoint: selectedCheckpoint }));
+}
 
 function sendSelectedModel(model) {
     const xhr = new XMLHttpRequest();
@@ -265,7 +299,28 @@ function sendSelectedModel(model) {
         if (xhr.readyState === 4) {
             if (xhr.status === 200) {
                 const response = JSON.parse(xhr.responseText);
-                console.log('Success:', response);
+                let checkpoint_list = response.checkpoint_list;
+                console.log('Received Checkpoints:', checkpoint_list);
+
+                const checkpointDropdown = document.getElementById('correction-select-model-checkpoint');
+                
+                // Clear any existing options
+                checkpointDropdown.innerHTML = '';
+                
+                // Create a default option
+                let defaultOption = document.createElement('option');
+                defaultOption.text = "Latest";
+                defaultOption.value = "latest";
+                checkpointDropdown.add(defaultOption);
+
+                // Populate dropdown with new checkpoints
+                checkpoint_list.forEach(function(checkpoint) {
+                    let option = document.createElement('option');
+                    option.text = checkpoint;
+                    option.value = checkpoint.split('-')[1];
+                    checkpointDropdown.add(option);
+                });
+
             } else {
                 console.error('Error:', xhr.responseText);
             }
@@ -274,6 +329,7 @@ function sendSelectedModel(model) {
 
     xhr.send(JSON.stringify({ model: model }));
 }
+
 
 
 // Function to update the select options
@@ -566,6 +622,7 @@ function startActualTraining(datasetPath, epochs, learningRate) {
                     if (progress >= 100) {
                         eventSource.close();
                         createPopup('training-completed-popup', 'Training is complete.');
+                        updateDatasetOptions();
                     }
                 };
             } else {
@@ -620,7 +677,7 @@ function handleChartClick(event, chart) {
 
     if (points.length) {
         const firstPoint = points[0];
-        const epoch = chart.data.labels[firstPoint.index];
+        const epoch = chart.data.labels[firstPoint.index]-1;
 
         fetchImageList(epoch).then(files => {
             const inputImage = files.input_image_path;

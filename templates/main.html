@@ -23,6 +23,9 @@
                         <option value="" disabled selected>Select Model</option>
                         <option value="disabled">Disabled</option>
                     </select>
+                    <select id="correction-select-model-checkpoint" style="display: none;">
+                        <option value="latest">Latest</option>
+                    </select>
                 </div>
                 <div id="left-panel" class="panel">
                     <img id="live-video-left" alt="Live Video Left">
@@ -37,15 +40,15 @@
                     <div class="training-images">
                         <div class="training-image-block">
                             <h2>Input Image</h2>
-                            <img id="training-tab-before-image" alt="Before Image">
+                            <img id="training-tab-before-image" alt="Input Image">
                         </div>
                         <div class="training-image-block">
                             <h2>Target Image</h2>
-                            <img id="training-tab-target-image" alt="Predicted Image">
+                            <img id="training-tab-target-image" alt="Target Image">
                         </div>
                         <div class="training-image-block">
                             <h2>Predicted Image</h2>
-                            <img id="training-tab-after-image" alt="After Image">
+                            <img id="training-tab-after-image" alt="Predicted Image">
                         </div>
                     </div>
                     <!-- Stylish Loading Bar -->

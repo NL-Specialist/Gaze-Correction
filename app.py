@@ -57,6 +57,25 @@ def index():
 def favicon():
     return app.send_static_file('favicon.ico')
 
+@app.route('/set_checkpoint', methods=['POST'])
+def set_checkpoint():
+    try:
+        data = request.get_json()
+        selected_checkpoint = data.get('checkpoint')
+        if not selected_checkpoint:
+            return jsonify({"error": "No checkpoint selected"}), 400
+
+        # If latest is selected 
+        if selected_checkpoint == 'latest': selected_checkpoint = -1
+
+        restore_checkpoint_response = requests.post("http://192.168.0.58:8021/restore_checkpoint/", json={"checkpoint_nr":selected_checkpoint})
+        if restore_checkpoint_response.status_code == 200:
+            return jsonify({"message": "Success"})
+        else:
+            return jsonify({"message": "Failed loading checkpoint"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/set_correction_model', methods=['POST'])
 def set_correction_model():
     global ACTIVE_MODEL
@@ -72,13 +91,19 @@ def set_correction_model():
 
         load_model_response = requests.post("http://192.168.0.58:8021/load_model/", json={"load_model_name":ACTIVE_MODEL})
         if load_model_response.status_code == 200:
-            restore_checkpoint_response = requests.post("http://192.168.0.58:8021/restore_checkpoint/", json={"checkpoint_nr":-1})
-            if restore_checkpoint_response.status_code == 200:
-                # Return a success response
-                return jsonify({"message": "Model selected successfully", "model": selected_model})
-            else:
-                print(f"[ERROR] Restoring checkpoint failed with status code {restore_checkpoint_response.status_code}")
-                print("[ERROR] Response text: ", restore_checkpoint_response.text)
+            load_model_data = load_model_response.json()
+            checkpoint_list = load_model_data.get('checkpoint_list', [])
+
+            if not selected_model == 'disabled':
+                restore_checkpoint_response = requests.post("http://192.168.0.58:8021/restore_checkpoint/", json={"checkpoint_nr":-1})
+                if restore_checkpoint_response.status_code == 200:
+                    camera_module.set_active_model(ACTIVE_MODEL)
+                else:
+                    print(f"[ERROR] Restoring checkpoint failed with status code {restore_checkpoint_response.status_code}, response text: {restore_checkpoint_response.text}")
+
+            camera_module.set_active_model(ACTIVE_MODEL)
+            return jsonify({"checkpoint_list": checkpoint_list})
+            
         else:
             print(f"[ERROR] Loading model failed with status code {load_model_response.status_code}")
             print("[ERROR] Response text: ", load_model_response.text)
@@ -234,7 +259,7 @@ def handle_start_video(data):
         print("Stream: ", stream)
         
         while camera_state['camera_on']:
-            frame = camera_module.get_frame(stream, ACTIVE_MODEL)
+            frame = camera_module.get_frame(stream)
             
             if frame:
                 if stream == "live-video-left-and-right-eye":
@@ -396,23 +421,31 @@ def dataset_loading_progress_stream():
 @app.route('/start_training', methods=['POST'])
 def start_training():
     global total_epochs, epoch_count, model_name
-    data = request.json
-    folder_path = data.get('dataset_path')
-    total_epochs = data.get('epochs')
-    learning_rate = data.get('learning_rate')
-    epoch_count = 0
+    try:
+        # Get request data
+        data = request.json
+        folder_path = data.get('dataset_path')
+        total_epochs = data.get('epochs')
+        learning_rate = data.get('learning_rate')
+        epoch_count = 0
 
-    load_model_response = requests.post("http://192.168.0.58:8021/load_model/", json={"load_model_name":model_name})
-    if load_model_response.status_code == 200:
-        # Notify the server to start training after all files are sent
-        response = requests.post("http://192.168.0.58:8021/train", json={'train_model_name': model_name, 'dataset_path': folder_path, 'epochs': total_epochs, 'learning_rate': learning_rate})
-        if response.status_code == 200:
+        if not folder_path or not total_epochs or not learning_rate:
+            return jsonify({"error": "Invalid input. 'dataset_path', 'epochs', and 'learning_rate' are required."}), 400
+
+        # Start training if model loading was successful
+        try:
+            response = requests.post("http://192.168.0.58:8021/train", json={'train_model_name': model_name, 'dataset_path': folder_path, 'epochs': total_epochs, 'learning_rate': learning_rate})
+            response.raise_for_status()
             print(f"[INFO] Training started successfully: {response.status_code}")
-    else:
-        print(f"[ERROR] Starting training failed with status code {response.status_code}")
-        print("[ERROR] Response text: ", response.text)
+        except requests.RequestException as e:
+            return jsonify({"error": "Failed to start training.", "details": str(e)}), 500
 
-    return jsonify({"message": "Training started successfully"})
+        return jsonify({"message": "Training started successfully"})
+    
+    except Exception as e:
+        print(f"[ERROR] An unexpected error occurred: {str(e)}")
+        return jsonify({"error": "An unexpected error occurred.", "details": str(e)}), 500
+
 
 
 @app.route('/training_progress', methods=['GET'])

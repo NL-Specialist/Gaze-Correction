@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 from modules.gaze_classification import GazeClassifier
+from ultralytics import SAM
 import numpy as np
 import dlib
 import logging
@@ -77,6 +78,7 @@ class Eyes:
             logging.error(f"Error in get_new_eyes: {e}")
             raise
 
+
     def process_frame(self, frame, show_face_mesh=True, classify_gaze=True, draw_rectangles=True):
         try:
             h, w, _ = frame.shape
@@ -86,7 +88,7 @@ class Eyes:
                 self.gaze_direction = self.gaze_classifier.classify_gaze(frame, show_face_mesh)
                 self.should_correct_gaze = self.gaze_direction == "Gaze Direction: Away"
 
-                cv2.putText(frame, self.gaze_direction, (w // 2 - 100, 70 * h // 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(frame, self.gaze_direction, (w // 2 - 100, h // 6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             if draw_rectangles and self.left_eye_bbox and self.right_eye_bbox:
                 cv2.rectangle(frame, self.left_eye_bbox[0], self.left_eye_bbox[1], (0, 255, 0), 2)

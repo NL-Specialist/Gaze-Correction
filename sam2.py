@@ -1,67 +1,54 @@
 import cv2
 from ultralytics import SAM
+import numpy as np
 
-print("Starting the SAM model script.")
+# Define the remove_eyes function
+def remove_eyes(frame):
+    """Removes eyes from the input frame using two points selected by the user."""
+    
+    # Initialize variables to store eye points
+    eye_points = []
 
-# Load the SAM model
-print("Loading the SAM model.")
-model = SAM("sam2_b.pt")
+    def click_event(event, x, y, flags, params):
+        """Mouse click event to capture eye points."""
+        if event == cv2.EVENT_LBUTTONDOWN:
+            # Append the clicked point (x, y) to the eye_points list
+            print(f"Point selected: ({x}, {y})")
+            eye_points.append([x, y])
 
-# Display model information (optional)
-print("Displaying model information.")
-model.info()
+            # Once two points are selected, close the image window
+            if len(eye_points) == 2:
+                cv2.destroyAllWindows()
 
-# Define the path to the input image
-input_image_path = r"/home/chatbot/GAN/Gaze Correction FYP/cheese.jpg"
-print(f"Input image path: {input_image_path}")
+    # Display the frame and wait for clicks to select eye points
+    print("Please click on your left eye, then on your right eye.")
+    cv2.imshow("Select Eyes", frame)
+    cv2.setMouseCallback("Select Eyes", click_event)
 
-# Load the image using OpenCV
-print("Loading the image.")
-image = cv2.imread(input_image_path)
+    cv2.waitKey(0)  # Wait for the two points to be selected
 
-# Check if the image was loaded successfully
-if image is None:
-    print("Error: Could not load image.")
-    exit()
-else:
-    print(f"Image loaded successfully. Image shape: {image.shape}")
+    # Ensure two points are selected
+    if len(eye_points) != 2:
+        print("Error: Two points were not selected. Please try again.")
+        return frame  # Return the original frame if points were not selected
 
-# Rotate the image 90 degrees counterclockwise
-print("Rotating the image 90 degrees counterclockwise.")
-# image_rotated = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    # Load the SAM model
+    print("Loading the SAM model.")
+    model = SAM("sam2_b.pt")
 
-# Print shape of the rotated image
-# print(f"Rotated image shape: {image_rotated.shape}")
+    # Segment with the selected points (eyes)
+    eye_labels = [1, 1]  # Label as foreground for both eyes
+    eye_results = model(frame, points=eye_points, labels=eye_labels)
 
-# Segment the entire rotated image using the SAM model
-print("Running segmentation on the rotated image.")
-results = model(image)
+    # Access the mask data from the results
+    eye_mask = eye_results[0].masks.data.sum(axis=0).cpu().numpy()  # Combine the two eye masks
 
-# Check if the results contain masks
-if hasattr(results, 'masks') and results.masks is not None:
-    print(f"Number of masks found: {len(results.masks)}")
-    # Draw the segmentation results on the image
-    for i, mask in enumerate(results.masks):
-        print(f"Processing mask {i+1}/{len(results.masks)}.")
-        image[mask] = (0, 255, 0)  # Example color for the mask
+    # Convert the mask to uint8 format and create an inverted mask
+    eye_mask = (eye_mask > 0).astype('uint8')  # Binary mask where eyes are segmented
+    inverse_mask = 1 - eye_mask  # Invert the mask to remove eyes from the image
 
-    # Display the segmented and rotated image
-    print("Displaying the segmented and rotated image.")
-    cv2.imshow("Segmented Image", image)
-else:
-    print("Error: No masks found in the results.")
+    # Apply the inverse mask to the original frame to remove the eye segments
+    result_image = frame * inverse_mask[:, :, np.newaxis]
 
-# Wait until a key is pressed to close the window
-print("Waiting for key press to close the window.")
-cv2.waitKey(0)
+    return result_image
 
-# Close all OpenCV windows
-print("Closing all OpenCV windows.")
-cv2.destroyAllWindows()
-
-# Optionally, save the segmented and rotated image to a file
-output_image_path = r"/home/chatbot/GAN/Gaze Correction FYP/cheese_segmented.jpg"
-print(f"Saving the segmented and rotated image to: {output_image_path}")
-cv2.imwrite(output_image_path, image)
-
-print("Script finished.")
