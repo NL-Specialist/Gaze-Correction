@@ -144,8 +144,8 @@ function openWebsockets(streams) {
 
                 if (stream === "live-video-left-and-right-eye"){
                     if (data.type === "left_and_right_eye"){
-                        left_eye_arrayBuffer = data.frame['left_eye'];
-                        right_eye_arrayBuffer = data.frame['right_eye'];
+                        left_eye_arrayBuffer = data.left_eye;
+                        right_eye_arrayBuffer = data.right_eye;
 
                         left_eye_blob = new Blob([left_eye_arrayBuffer], { type: 'image/jpeg' });
                         left_eye_url = URL.createObjectURL(left_eye_blob);
@@ -247,13 +247,42 @@ function toggleDatasetMode() {
     }
 }
 
+document.addEventListener('DOMContentLoaded', (event) => {
+    document.getElementById('correction-select-model').addEventListener('change', function () {
+        const selectedModel = this.value;
+        if (selectedModel !== "disabled") {
+            sendSelectedModel(selectedModel);
+        }
+    });
+});
+
+function sendSelectedModel(model) {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/set_correction_model", true);
+    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+    
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                const response = JSON.parse(xhr.responseText);
+                console.log('Success:', response);
+            } else {
+                console.error('Error:', xhr.responseText);
+            }
+        }
+    };
+
+    xhr.send(JSON.stringify({ model: model }));
+}
+
+
 // Function to update the select options
 function updateDatasetOptions() {
     // Create a new XMLHttpRequest object
     const xhr = new XMLHttpRequest();
 
     // Configure it: GET-request for the URL /backend/get_datasets
-    xhr.open('GET', '/backend/get_datasets', true);
+    xhr.open('GET', '/backend/get_models_and_datasets', true);
 
     // Set up the callback function for when the request completes
     xhr.onload = function() {
@@ -263,12 +292,17 @@ function updateDatasetOptions() {
 
             // Get the select element by its id
             const selectElement = document.getElementById('existingDatasets');
+            const trainingSelectElement = document.getElementById('training-tab-select-dataset');
+            const correctionModelSelectElement = document.getElementById('correction-select-model');
+            
 
             // Clear the existing options
             selectElement.innerHTML = '';
+            trainingSelectElement.innerHTML = '';
+            correctionModelSelectElement.innerHTML = '';
 
             // Add new options to the select element
-            newOptions.forEach(function(option) {
+            newOptions.datasets.forEach(function(option) {
                 // Create a new option element
                 const newOption = document.createElement('option');
                 // Set the value and text content
@@ -276,6 +310,34 @@ function updateDatasetOptions() {
                 newOption.textContent = option.text;
                 // Append the new option to the select element
                 selectElement.appendChild(newOption);
+
+                // Create a new option element
+                const newOption2 = document.createElement('option');
+                // Set the value and text content
+                newOption2.value = option.value;
+                newOption2.textContent = option.text;
+                // Append the new option to the select element
+                trainingSelectElement.appendChild(newOption2);
+            });
+
+            // Create a DISABLED option element
+            const newOption3 = document.createElement('option');
+            // Set the value and text content
+            newOption3.value = 'disabled';
+            newOption3.textContent = 'disabled';
+            newOption3.selected = true;
+            // Append the new option to the select element
+            correctionModelSelectElement.appendChild(newOption3);
+
+            // Add new options to the select element models
+            newOptions.models.forEach(function(option) {
+                // Create a new option element
+                const newOption4 = document.createElement('option');
+                // Set the value and text content
+                newOption4.value = option.value;
+                newOption4.textContent = option.text;
+                // Append the new option to the select element
+                correctionModelSelectElement.appendChild(newOption4);
             });
         } else {
             console.error('Failed to fetch dataset options:', xhr.statusText);
@@ -343,9 +405,373 @@ function startNewDataset() {
     xhr.send(JSON.stringify({ datasetName: datasetName }));
 }
 
+let eventSource;
+let datasetLoadingSource;
+
+function createPopup(id, message) {
+    const existingPopupBackground = document.getElementById(`${id}-background`);
+    if (existingPopupBackground) {
+        document.body.removeChild(existingPopupBackground);
+    }
+
+    const popupBackground = document.createElement('div');
+    popupBackground.className = 'training_popup-background';
+    popupBackground.id = `${id}-background`;
+
+    const popup = document.createElement('div');
+    popup.className = 'training_popup';
+    popup.id = id;
+
+    const content = document.createElement('div');
+    content.className = 'training_popup-content';
+
+    const text = document.createElement('p');
+    text.textContent = message;
+    content.appendChild(text);
+
+    if (id != 'training-started-popup') {
+        const closeButton = document.createElement('button');
+        closeButton.className = 'training_popup-close-button';
+        closeButton.textContent = 'Continue';
+        closeButton.onclick = () => {
+            const popupBackground = document.getElementById(`${id}-background`);
+            if (popupBackground) {
+                document.body.removeChild(popupBackground);
+            }
+        };
+        content.appendChild(closeButton);
+    }
+
+    popup.appendChild(content);
+    popupBackground.appendChild(popup);
+    document.body.appendChild(popupBackground);
+}
+
+function startTraining() {
+    const modelName = document.getElementById('training-tab-model-name').value;
+    const dataset = document.getElementById('training-tab-select-dataset').value;
+    const epochs = document.getElementById('training-tab-epochs').value;
+    const learningRate = document.getElementById('training-tab-learning-rate').value;
+
+    if (!modelName || !dataset || !epochs || !learningRate) {
+        console.log('Please fill in all fields.');
+        alert('Please fill in all fields.');
+        return;
+    }
+
+    const data = {
+        model_name: modelName,
+        dataset: dataset,
+        epochs: parseInt(epochs),
+        learning_rate: parseFloat(learningRate)
+    };
+
+    console.log('Sending data to backend:', data);
+    updateProgressBar(1);
+    
+    if (eventSource) {
+        eventSource.close();
+    }
+    if (datasetLoadingSource) {
+        datasetLoadingSource.close();
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/load_dataset', true);
+    xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+            if (xhr.status === 200) {
+                console.log('Dataset loading started successfully.');
+                createPopup('loading-dataset-popup', 'Loading Dataset...');
+
+                // Handle dataset loading progress
+                datasetLoadingSource = new EventSource('/dataset_loading_progress_stream');
+                datasetLoadingSource.onmessage = function (event) {
+                    const data = JSON.parse(event.data);
+                    const progress = data.progress;
+                    const file_count = data.file_count;
+                    const total_files = data.total_files;
+
+                    console.log('Dataset Loading Progress:', progress);
+                    updateProgressBar(progress);
+                    updateDatasetFileProgress(file_count, total_files, progress);
+
+                    if (progress >= 100) {
+                        datasetLoadingSource.close();
+                        const loadingDatasetPopup = document.getElementById('loading-dataset-popup-background');
+                        if (loadingDatasetPopup) {
+                            document.body.removeChild(loadingDatasetPopup);
+                        }
+                        
+                        createPopup('training-started-popup', 'Starting training, please wait...');
+                        updateProgressBar(1);
+
+                        updateEpochProgress("0", "0", "0")
+                        // Start training after dataset loading is complete
+                        console.log('Starting actual training.');
+                        startActualTraining(`datasets/${dataset}`, epochs, learningRate);
+                    }
+                };
+
+                resetGraphs();
+            } else {
+                console.log('Error loading dataset:', xhr.responseText);
+            }
+        }
+    };
+
+    xhr.send(JSON.stringify(data));
+}
+
+function startActualTraining(datasetPath, epochs, learningRate) {
+    const data = {
+        dataset_path: datasetPath,
+        epochs: epochs,
+        learning_rate: learningRate
+    };
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/start_training', true);
+    xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+            if (xhr.status === 200) {
+                eventSource = new EventSource('/training_progress');
+                eventSource.onmessage = function (event) {
+                    const data = JSON.parse(event.data);
+                    const progress = data.progress;
+                    const epoch_count = data.epoch_count; 
+                    const total_epochs = data.total_epochs;
+                    const inputImage = data.input_image;
+                    const targetImage = data.target_image;
+                    const predictedImage = data.predicted_image;
+                    const generatorLoss = data.generator_loss;
+                    const discriminatorLoss = data.discriminator_loss;
+
+                    console.log('Training started successfully.');
+                    const trainingStartedPopup = document.getElementById('training-started-popup-background');
+                    if (trainingStartedPopup) {
+                        document.body.removeChild(trainingStartedPopup);
+                    }
+
+                    console.log('Training Progress:', progress);
+                    updateProgressBar(progress);
+                    updateImages(inputImage, targetImage, predictedImage);
+                    updateLossGraphs(generatorLoss, discriminatorLoss);
+                    updateEpochProgress(epoch_count, total_epochs, progress);
+
+                    if (progress >= 100) {
+                        eventSource.close();
+                        createPopup('training-completed-popup', 'Training is complete.');
+                    }
+                };
+            } else {
+                console.log('Error starting training:', xhr.responseText);
+            }
+        }
+    };
+
+    xhr.send(JSON.stringify(data));
+}
+
+function updateEpochProgress(currentEpoch, totalEpochs, progress) {
+    document.getElementById('epoch-progress').innerText = `| Progress ${progress}% | Epoch ${currentEpoch}/${totalEpochs}`;
+}
+
+function updateDatasetFileProgress(currentFile, totalFiles, fileProgresss) {
+    document.getElementById('epoch-progress').innerText = `| Progress ${fileProgresss}% | Files ${currentFile}/${totalFiles} |`;
+}
+
+function updateProgressBar(progress) {
+    const progressBar = document.getElementById('training-tab-loading-bar');
+    if (progress === 0){progress = 1}
+    progressBar.style.width = progress + '%';
+    console.log('Updated progress bar to', progress, '%');
+}
+
+
+// Function to update the before and after images
+function updateImages(inputImage, targetImage, predictedImage) {
+    const beforeImageElement = document.getElementById('training-tab-before-image');
+    const targetImageElement = document.getElementById('training-tab-target-image');
+    const afterImageElement = document.getElementById('training-tab-after-image');
+    console.log("Updating Images...")
+    beforeImageElement.src = `${inputImage}`;
+    targetImageElement.src = `${targetImage}`;
+    afterImageElement.src = `${predictedImage}`;
+    console.log('Updated images');
+}
+
+// // Call this function when the page loads
+// document.addEventListener('DOMContentLoaded', (event) => {
+//     updateImages(inputImage="models/Test1_Model/image_checkpoints/image_input_at_epoch_0_step_489.png",targetImage="models/Test1_Model/image_checkpoints/image_target_at_epoch_0_step_489.png", predictedImage="models/Test1_Model/image_checkpoints/image_predicted_at_epoch_0_step_489.png");
+// });
+
+function fetchImageList(epoch) {
+    return fetch(`/image_checkpoints/${epoch}/`)
+        .then(response => response.json());
+}
+
+function handleChartClick(event, chart) {
+    const points = chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, false);
+
+    if (points.length) {
+        const firstPoint = points[0];
+        const epoch = chart.data.labels[firstPoint.index];
+
+        fetchImageList(epoch).then(files => {
+            const inputImage = files.input_image_path;
+            const targetImage = files.target_image_path;
+            const predictedImage = files.predicted_image_path;
+
+            updateImages(inputImage, targetImage, predictedImage);
+        });
+    }
+}
+
+
+
+// Function to initialize the loss graphs
+let genLossChart, discLossChart;
+
+function initializeLossGraphs() {
+    const genLossCtx = document.getElementById('training-tab-generator-loss-graph').getContext('2d');
+    const discLossCtx = document.getElementById('training-tab-discriminator-loss-graph').getContext('2d');
+
+    const commonOptions = {
+        scales: {
+            x: {
+                title: {
+                    display: true,
+                    text: 'Epoch',
+                    color: '#ffffff'
+                },
+                ticks: {
+                    color: '#ffffff'
+                },
+                grid: {
+                    color: '#ffffff'
+                }
+            },
+            y: {
+                title: {
+                    display: true,
+                    text: 'Loss',
+                    color: '#ffffff'
+                },
+                ticks: {
+                    color: '#ffffff'
+                },
+                grid: {
+                    color: '#ffffff'
+                },
+                beginAtZero: true
+            }
+        },
+        plugins: {
+            legend: {
+                labels: {
+                    color: '#ffffff'
+                }
+            }
+        }
+    };
+
+    genLossChart = new Chart(genLossCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Generator Loss',
+                data: [],
+                borderColor: 'rgb(99, 255, 104)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            ...commonOptions,
+            onClick: (event) => handleChartClick(event, genLossChart) // Add click event listener for genLossChart
+        }
+    });
+
+    discLossChart = new Chart(discLossCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Discriminator Loss',
+                data: [],
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            ...commonOptions,
+            onClick: (event) => handleChartClick(event, discLossChart) // Add click event listener for discLossChart
+        }
+    });
+}
+
+
+// Function to update the loss graphs
+function updateLossGraphs(generatorLoss, discriminatorLoss) {
+    const currentEpoch = genLossChart.data.labels.length + 1;
+    
+    genLossChart.data.labels.push(currentEpoch);
+    genLossChart.data.datasets[0].data.push(generatorLoss);
+    genLossChart.update();
+
+    discLossChart.data.labels.push(currentEpoch);
+    discLossChart.data.datasets[0].data.push(discriminatorLoss);
+    discLossChart.update();
+}
+
+// Function to reset the graphs
+function resetGraphs() {
+    genLossChart.data.labels = [];
+    genLossChart.data.datasets[0].data = [];
+    genLossChart.update();
+
+    discLossChart.data.labels = [];
+    discLossChart.data.datasets[0].data = [];
+    discLossChart.update();
+}
+
+// Call this function when the page loads
+document.addEventListener('DOMContentLoaded', (event) => {
+    initializeLossGraphs();
+});
+
 
 
 document.addEventListener('DOMContentLoaded', (event) => {
+    const tabButtons = document.querySelectorAll(".tab button");
+    const activeIndicator = document.createElement("div");
+    activeIndicator.classList.add("active-indicator");
+    document.querySelector(".tab").appendChild(activeIndicator);
+    
+    function moveActiveIndicator(button) {
+        const buttonRect = button.getBoundingClientRect();
+        const tabRect = document.querySelector(".tab").getBoundingClientRect();
+        activeIndicator.style.width = `${buttonRect.width}px`;
+        activeIndicator.style.left = `${buttonRect.left - tabRect.left}px`;
+    }
+    
+    tabButtons.forEach(button => {
+        button.addEventListener("click", function() {
+            tabButtons.forEach(btn => btn.classList.remove("active"));
+            button.classList.add("active");
+            moveActiveIndicator(button);
+        });
+    });
+    
+    // Initialize the indicator position based on the active tab
+    const initialActiveButton = document.querySelector(".tab button.active") || tabButtons[0];
+    moveActiveIndicator(initialActiveButton);
+
     const defaultTab = document.querySelector('.tablinks.active');
     if (defaultTab) {
         defaultTab.click();

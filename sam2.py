@@ -12,7 +12,7 @@ print("Displaying model information.")
 model.info()
 
 # Define the path to the input image
-input_image_path = r"D:\OneDrive - North-West University\Rocketbook\2024\EERI474\FYP\Gaze Correction FYP\full_frame.jpg"
+input_image_path = r"datasets\Test3_Dataset\at_camera\image_1\full_frame.jpg"
 print(f"Input image path: {input_image_path}")
 
 # Load the image using OpenCV
@@ -60,7 +60,7 @@ print("Closing all OpenCV windows.")
 cv2.destroyAllWindows()
 
 # Optionally, save the segmented and rotated image to a file
-output_image_path = r"D:\OneDrive - North-West University\Rocketbook\2024\EERI474\FYP\Gaze Correction FYP\full_frame_segmented.jpg"
+output_image_path = r"datasets\Test3_Dataset\at_camera\image_1\full_frame_segmented.jpg"
 print(f"Saving the segmented and rotated image to: {output_image_path}")
 cv2.imwrite(output_image_path, image_rotated)
 

@@ -155,22 +155,24 @@ h1 {
 
 
 
-.tab {
-    overflow: hidden;
-    border-bottom: 2px solid #444;
-    width: 30%;
-    display: flex;
-    justify-content: center;
-    /* margin: 2rem auto; Centers the tab horizontally and adds space above and below */
-    border-radius: 25px; /* Slightly rounded corners */
-    border-color: #000000;
-    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 150%); /* Light background color for contrast */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Adds a subtle shadow for depth */
-    padding-left: 3.1vw;
-    margin-top: 0vh;
-    /* padding: 1rem; Adds some padding for spacing inside the tab */
-}
 
+
+
+.tab {
+    position: relative;
+    display: flex;
+    width: 40%;
+    justify-content: center;
+    border-bottom: 2px solid #444;
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 150%);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 25px;
+    padding: 0;
+    /* margin: 2rem auto; */
+}
+.tablinks{
+    width: 100%;
+}
 
 .tab button {
     background-color: inherit;
@@ -178,34 +180,31 @@ h1 {
     outline: none;
     cursor: pointer;
     padding: 14px 20px;
-    transition: 0.3s;
     font-size: 18px;
     color: #ffffff;
     margin: 0 20px;
-    animation: fadeInUp 1s;
+    transition: color 0.3s;
     font-family: 'Poppins', sans-serif;
 }
 
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
 .tab button:hover {
-    color: #ffffff; /* Color change on hover */
-    transform: scale(1.1); /* Slightly increase the size of the button on hover */
+    color: #ffffff;
 }
 
 .tab button.active {
-    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%);;
     color: white;
 }
+
+.tab .active-indicator {
+    position: absolute;
+    bottom: 0;
+    height: 4px;
+    background: linear-gradient(135deg, #2b394a 0%, #ffffff 100%);
+    border-radius: 2px;
+    transition: all 0.3s ease;
+}
+
+
 
 .tabcontent {
     display: none;
@@ -232,6 +231,54 @@ h1 {
         opacity: 1;
         transform: scale(1);
     }
+}
+
+.correction-model-select-block {
+    width: 14%;
+    margin: auto;
+    /* margin-top: 1vh; Adjust this value to shift upwards */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: inherit;
+    padding: 5px;
+    animation: fadeIn 1s;
+}
+
+
+
+/* Base style for the dropdown */
+#correction-select-model {
+    background-color: transparent;
+    color: white;
+    border-radius: 10px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 20px;
+    border: 2px solid #ffff;
+}
+
+/* Style for the dropdown options */
+#correction-select-model option {
+    background-color: #3d5a80;
+    color: white;
+}
+
+/* Style for hovered options */
+#correction-select-model option:hover {
+    background-color: lightblue;
+    color: white;
+}
+
+/* Style for selected options */
+#correction-select-model option:checked {
+    background-color: #6b727a;
+    color: white;
+}
+
+/* Style for focused dropdown */
+#correction-select-model:focus {
+    outline: none; /* Remove default outline */
+    box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.5); /* Add custom focus shadow */
 }
 
 #left-panel {
@@ -363,10 +410,10 @@ img {
     width: 100%;
     height: auto;
     max-height: 90%;
-    object-fit: cover;
+    object-fit: fill;
     object-position: 50% 40%;
     border-radius: 10px;
-    border: 3px solid #e8e8e8;
+    border: 2px solid #ffffff;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
@@ -433,8 +480,10 @@ img {
     left: 0%;
     width: 50%;
     height: 100%;
-    animation: slideInLeft 1.5s forwards;
+    animation: fadeIn 1s;
 }
+
+
 
 
 #video3 {
@@ -442,7 +491,7 @@ img {
     right: 26%;
     width: 23%;
     height: 45%;
-    animation: slideInUp 1.5s forwards;
+    animation: fadeIn 1s;
 }
 
 #video4 {
@@ -450,7 +499,7 @@ img {
     right: 2%;
     width: 23%;
     height: 45%;
-    animation: slideInUp 1.5s forwards;
+    animation: fadeIn 1s;
 }
 
 
@@ -480,14 +529,9 @@ img {
     right: 2%;
     top: 6%;
     width: 44%;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    animation: slideInRight 2s forwards;
+    animation: fadeIn 1s forwards;
 }
 
-#settings-panel:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-}
 
 /* Styles for labels and inputs */
 #settings-panel label {
@@ -749,3 +793,356 @@ img {
         opacity: 1;
     }
 }
+
+
+/* ============================== */
+/* Training Tab Styles */
+/* ============================== */
+
+/* Training Section Layout */
+.training-section {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 20px; /* Added padding to the entire training section */
+}
+
+/* Training Images Layout */
+.training-images {
+    display: flex;
+    justify-content: space-between;
+    height: 58%; /* Adjusted height to accommodate padding */
+    margin-bottom: 10px; /* Space between images and loading bar */
+}
+
+.training-image-block {
+    width: 48%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: inherit;
+    /* border: 2px solid #3d5a80; */
+    border-radius: 10px;
+    padding: 10px;
+    /* box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); */
+    animation: fadeIn 1s;
+}
+
+.training-image-block h2 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: #e3f2fd;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    margin-bottom: 10px; /* Space between label and image */
+}
+
+#training-tab-before-image, #training-tab-target-image, #training-tab-after-image {
+    width: 30vw; /* Set a fixed width */
+    height: 50vh; /* Set a fixed height */
+    object-fit: fill;
+    object-position: 50% 40%;
+    border-radius: 10px;
+    border: 2px solid #ffffff;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    /* background-color: rgb(99, 255, 104); */
+}
+
+
+/* Stylish Loading Bar Layout */
+.training-loading {
+    display: flex;
+    justify-content: center;
+    margin-top: 0.2%;
+    margin-bottom: 0.5%; /* Space between loading bar and parameters section */
+    animation: fadeIn 1s;
+}
+
+
+
+
+
+/* Stylish Training Control Buttons */
+.training-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px; /* Space between buttons */
+    margin-right: 20px; /* Space between buttons and loading bar */
+}
+
+.training-controls button {
+    font-family: 'Poppins', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #e3f2fd;
+    border: 2px solid #3d5a80;
+    padding: 10px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    background: none;
+    transition: all 0.3s ease;
+}
+
+.training-controls button:hover {
+    color: #3d5a80;
+    background: #e3f2fd;
+}
+
+.training-controls button:active {
+    transform: scale(0.95);
+}
+
+/* Base style for the dropdown */
+#training-tab-select-dataset {
+    background-color: transparent;
+    color: white;
+}
+
+/* Style for the dropdown options */
+#training-tab-select-dataset option {
+    background-color: #3d5a80;
+    color: white;
+}
+
+/* Style for hovered options */
+#training-tab-select-dataset option:hover {
+    background-color: lightblue;
+    color: white;
+}
+
+/* Style for selected options */
+#training-tab-select-dataset option:checked {
+    background-color: #6b727a;
+    color: white;
+}
+
+/* Style for focused dropdown */
+#training-tab-select-dataset:focus {
+    outline: none; /* Remove default outline */
+    box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.5); /* Add custom focus shadow */
+}
+
+
+/* Ensure the loading bar container has enough space */
+#training-tab-loading-bar-container {
+    display: flex;
+    align-items: center;
+    /* margin-top: 0.4%; */
+    padding: 0.1% 0;
+    width: 100%; /* Adjust width if necessary */
+    position: relative;
+    overflow: hidden;
+}
+
+#training-tab-loading-bar {
+    width: 100%; /* Adjust width to leave space for the label */
+    height: 20px;
+    position: relative;
+    background: linear-gradient(135deg, #374e69 0%, #ffffff 100%);
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    transition: width 0.3s ease;
+}
+
+#epoch-progress {
+    margin-left: 10px;
+    margin-top: 0.5%;
+    padding: 5px; /* Padding for some space between border and content */
+    color: #fff; /* Text color for readability */
+    font-family: 'Poppins', sans-serif; /* Match font style */
+    font-size: 14px; /* Adjust font size */
+    font-weight: 600; /* Adjust font weight */
+    white-space: nowrap; /* Prevent wrapping */
+}
+
+
+/* Training Parameters Layout */
+.training-parameters {
+    display: flex;
+    justify-content: space-between;
+    height: 35%; /* Adjusted height */
+    padding: 0 0px;
+    gap: 2%; /* Space between each block */
+}
+
+.training-parameter-block {
+    width: 24%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: inherit;
+    border: 2px solid #3d5a80;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    animation: fadeIn 1s;
+}
+
+.training-parameter-block h3 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: #e3f2fd;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    margin-bottom: 10px; /* Space between label and input fields */
+}
+
+.training-parameter-block label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #e3f2fd;
+}
+
+/* Input and Select Styles */
+.training-parameter-block input, .training-parameter-block select {
+    width: 70%; /* Adjusted width to touch the edge of the block */
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 2px solid #3d5a80;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 14px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.training-parameter-block input:hover, .training-parameter-block select:hover {
+    border-color: #2a3e5c;
+}
+
+.training-parameter-block input:focus, .training-parameter-block select:focus {
+    border-color: #1e2a38;
+    box-shadow: 0 0 8px rgba(30, 42, 56, 0.7);
+    outline: none;
+}
+
+/* Graph Block Styles */
+.training-graph-block {
+    width: 24%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: inherit;
+    border: 2px solid #3d5a80;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    animation: fadeIn 1s;
+}
+
+.training-graph-block h3 {
+    font-family: 'Poppins', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: #e3f2fd;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    margin-bottom: 10px; /* Space between label and canvas */
+}
+
+canvas {
+    width: 100%;
+    height: 100%;
+}
+
+/* Visibility and Animation Classes */
+.hidden {
+    display: none;
+}
+
+.visible {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.training_popup-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(5px);
+    z-index: 999;
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+.training_popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%);
+    color: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    width: 300px;
+    padding: 20px;
+    animation: popupIn 0.5s ease-in-out;
+}
+
+.training_popup-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Center horizontally */
+    gap: 10px;
+}
+
+.training_popup-content p {
+    margin: 0 0 10px;
+    font-size: 18px;
+    font-weight: 600;
+    color: white; /* Darker font color for better readability */
+    text-align: center; /* Center text within each paragraph */
+}
+
+.training_popup-close-button {
+    align-self: center;
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 16px;
+    color: #fff;
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%);
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.training_popup-close-button:hover {
+    background-color: #3d5a80;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes popupIn {
+    from {
+        transform: translate(-50%, -60%);
+        opacity: 0;
+    }
+    to {
+        transform: translate(-50%, -50%);
+        opacity: 1;
+    }
+}
+
+

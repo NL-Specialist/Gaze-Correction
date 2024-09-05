@@ -15,13 +15,14 @@ class Eyes:
                                                              min_detection_confidence=0.5,
                                                              min_tracking_confidence=0.5)
             self.drawing_spec = mp.solutions.drawing_utils.DrawingSpec(thickness=1, circle_radius=1)
-            self.fixed_box_height = 25  # Fixed bounding box height
+            self.fixed_box_height = 24  # Fixed bounding box height
             self.fixed_box_width = 50   # Fixed bounding box width
+            self.fixed_box_dimensions = (self.fixed_box_width, self.fixed_box_height)
             self.offset_y = 20  # Offset to move the bounding box up
             self.left_eye_offset_x = 0  # Offset to move the left eye bounding box left/right
             self.left_eye_offset_y = 5  # Offset to move the left eye bounding box up/down
             self.right_eye_offset_x = 5  # Offset to move the right eye bounding box left/right
-            self.right_eye_offset_y = 10  # Offset to move the right eye bounding box up/down
+            self.right_eye_offset_y = 5  # Offset to move the right eye bounding box up/down
             self.left_eye_bbox = None
             self.right_eye_bbox = None
 
@@ -33,9 +34,13 @@ class Eyes:
             self.right_eye_img = None
 
             self.gaze_classifier = GazeClassifier()
-            response = requests.post("http://192.168.0.58:8021/load_model/")
-            print(response.json())
 
+            # try:
+            #     response = requests.post("http://192.168.0.58:8021/load_model/", json={"model_name":"Test1"})
+            #     if response.status_code == 200:
+            #         print(response.status())
+            # except Exception as e:
+            #     print("Error loading GAN: ", e)
             # self.set_default_overlay_eyes()
         except Exception as e:
             logging.error(f"Error initializing Eyes: {e}")
@@ -92,6 +97,97 @@ class Eyes:
             logging.error(f"Error in process_frame: {e}")
             raise
 
+    def capture_left_eye_region(self, frame):
+        try:
+            left_eye_frame, _ = self.extract_eye_region(frame, eye="left")
+            return self.place_on_colored_square(left_eye_frame, bg_color=(255, 0, 0))
+        except Exception as e:
+            logging.error(f"Error in capture_left_eye_region: {e}")
+            raise
+
+    def capture_right_eye_region(self, frame, show_eyes=False):
+        try:
+            _, right_eye_frame = self.extract_eye_region(frame, eye="right")
+            return self.place_on_colored_square(right_eye_frame, bg_color=(255, 0, 0))
+        except Exception as e:
+            logging.error(f"Error in capture_right_eye_region: {e}")
+            raise
+
+    def place_on_colored_square(self, eye_image, bg_color=(255, 0, 0)):
+        if bg_color is None:
+            return eye_image
+    
+        # Create a colored square with the specified background color
+        colored_square = np.full((self.fixed_box_dimensions[1], self.fixed_box_dimensions[0], 3), bg_color, dtype=np.uint8)
+        eye_h, eye_w, _ = eye_image.shape
+    
+        # Calculate the offsets to center the eye image on the square
+        x_offset = max((self.fixed_box_dimensions[0] - eye_w) // 2, 0)
+        y_offset = max((self.fixed_box_dimensions[1] - eye_h) // 2, 0)
+    
+        # Place the eye image on the colored square
+        colored_square[y_offset:y_offset + eye_h, x_offset:x_offset + eye_w] = eye_image
+    
+        return colored_square
+
+
+
+    def _extract_eye_region(self, frame, eye_points, bg_color=(255, 0, 0)):
+        if bg_color is None:
+            return frame
+
+        mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+        cv2.fillPoly(mask, [np.array(eye_points)], (255))
+        eye_region = cv2.bitwise_and(frame, frame, mask=mask)
+
+        x, y, w, h = cv2.boundingRect(np.array(eye_points))
+        eye_crop = eye_region[y:y+h, x:x+w]
+        mask_crop = mask[y:y+h, x:x+w]
+
+        colored_background = np.full_like(eye_crop, bg_color, dtype=np.uint8)
+        colored_background[mask_crop == 255] = eye_crop[mask_crop == 255]
+
+        return colored_background
+
+
+
+    def extract_eye_region(self, frame, eye):
+        try:
+            img_h, img_w, _ = frame.shape
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = self.face_mesh.process(frame_rgb)
+
+            if results.multi_face_landmarks:
+                for face_landmarks in results.multi_face_landmarks:
+                    eye_landmarks = {
+                        "left_eye": [7, 163, 144, 153, 154, 155, 173, 157, 158, 159, 160, 161],
+                        "right_eye": [384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374, 380, 381, 382, 398]
+                    }
+
+                    left_eye_points = []
+                    right_eye_points = []
+                    
+                    for idx in eye_landmarks["left_eye"]:
+                        x = int(face_landmarks.landmark[idx].x * img_w)
+                        y = int(face_landmarks.landmark[idx].y * img_h)
+                        left_eye_points.append((x, y))
+
+                    for idx in eye_landmarks["right_eye"]:
+                        x = int(face_landmarks.landmark[idx].x * img_w)
+                        y = int(face_landmarks.landmark[idx].y * img_h)
+                        right_eye_points.append((x, y))
+
+                    left_eye_frame = self._extract_eye_region(frame, left_eye_points,  (255, 0, 0))
+                    right_eye_frame = self._extract_eye_region(frame, right_eye_points, (255, 0, 0))
+
+                    return left_eye_frame , right_eye_frame
+
+            return frame, None
+        except Exception as e:
+            logging.error(f"Error in extract_eye_region: {e}")
+            raise
+    
+
     def get_left_eye_region(self, frame, show_eyes=False):
         try:
             frame = self.draw_selected_landmarks(frame, show_eyes=show_eyes, show_mouth=False, show_face_outline=False, show_text=False)
@@ -136,6 +232,9 @@ class Eyes:
                         x = int(landmark.x * img_w)
                         y = int(landmark.y * img_h)
 
+                        # "left_eye": [7, 163, 144, 153, 154, 155, 173, 157, 158, 159, 160, 161],
+                        # "right_eye": [384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374, 380, 381, 382, 398]
+
                         if show_eyes and idx in [33, 133, 144, 145, 153, 154, 155, 157, 158, 159, 160, 161, 163, 173, 246,
                                                  362, 398, 384, 385, 386, 387, 388, 390, 373, 374, 380, 466]:
                             cv2.circle(frame, (x, y), 1, (0, 255, 0), -1)  # Draw small circle at each landmark point for eyes
@@ -165,10 +264,13 @@ class Eyes:
                         self._calculate_eye_boxes(face_landmarks, frame)
 
                         # Load the corrected eye images from the provided paths
-                        self.left_eye_img = cv2.imread(corrected_left_eye_path)
-                        self.right_eye_img = cv2.imread(corrected_right_eye_path)
+                        if not corrected_left_eye_path == None:
+                            self.left_eye_img = cv2.imread(corrected_left_eye_path)
+                            self.overlay_image(frame, self.left_eye_bbox, self.left_eye_img)
+                        if not corrected_right_eye_path == None:
+                            self.right_eye_img = cv2.imread(corrected_right_eye_path)
+                            self.overlay_image(frame, self.right_eye_bbox, self.right_eye_img)
 
-                        frame = self._overlay_eye_images(frame)
             return frame
         except Exception as e:
             logging.error(f"Error in correct_gaze: {e}")
@@ -211,32 +313,25 @@ class Eyes:
             raise
 
     
-    def _overlay_eye_images(self, frame):
+
+    def overlay_image(self, frame, eye_bbox, eye_img):
         try:
-            def overlay_image(eye_bbox, eye_img):
-                try:
-                    (x_min, y_min), (x_max, y_max) = eye_bbox
-                    eye_region = frame[y_min:y_max, x_min:x_max]
-                    eye_img_resized = cv2.resize(eye_img, (x_max - x_min, y_max - y_min))
+            (x_min, y_min), (x_max, y_max) = eye_bbox
+            eye_region = frame[y_min:y_max, x_min:x_max]
+            eye_img_resized = cv2.resize(eye_img, (x_max - x_min, y_max - y_min))
 
-                    if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel
-                        alpha_s = eye_img_resized[:, :, 3] / 255.0
-                        alpha_l = 1.0 - alpha_s
+            if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel
+                alpha_s = eye_img_resized[:, :, 3] / 255.0
+                alpha_l = 1.0 - alpha_s
 
-                        for c in range(0, 3):
-                            eye_region[:, :, c] = (alpha_s * eye_img_resized[:, :, c] +
-                                                   alpha_l * eye_region[:, :, c])
-                    else:
+                for c in range(0, 3):
+                    eye_region[:, :, c] = (alpha_s * eye_img_resized[:, :, c] +
+                                           alpha_l * eye_region[:, :, c])     
+            else:
 
-                        frame[y_min:y_max, x_min:x_max] = eye_img_resized
-                except Exception as e:
-                    logging.error(f"Error in overlay_image: {e}")
-                    raise
-
-            overlay_image(self.left_eye_bbox, self.left_eye_img)
-            overlay_image(self.right_eye_bbox, self.right_eye_img)
-            
-            return frame
+                frame[y_min:y_max, x_min:x_max] = eye_img_resized
+        
         except Exception as e:
-            logging.error(f"Error in _overlay_eye_images: {e}")
+            logging.error(f"Error in overlay_image: {e}")
             raise
+
