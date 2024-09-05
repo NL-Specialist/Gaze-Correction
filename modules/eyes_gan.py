@@ -8,14 +8,17 @@ import random
 import imageio
 import matplotlib.pyplot as plt
 import numpy as np
+import shutil
+import re
 
 class EYES_GAN:
-    def __init__(self, generator, discriminator):
+    def __init__(self, model_name, generator, discriminator):
         self.generator = generator
         self.discriminator = discriminator
-        self.generator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
-        self.discriminator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
-        self.checkpoint_dir = './training_checkpoints'
+        self.generator_optimizer = tf.keras.optimizers.Adam(1e-4, beta_1=0.5)
+        self.discriminator_optimizer = tf.keras.optimizers.Adam(2e-5, beta_1=0.5)
+        self.model_save_dir = os.path.join('models', model_name)
+        self.checkpoint_dir = os.path.join(self.model_save_dir, 'training_checkpoints')
         self.checkpoint_prefix = os.path.join(self.checkpoint_dir, "ckpt")
         self.checkpoint = tf.train.Checkpoint(generator_optimizer=self.generator_optimizer,
                                               discriminator_optimizer=self.discriminator_optimizer,
@@ -25,12 +28,33 @@ class EYES_GAN:
         self.summary_writer = tf.summary.create_file_writer(
             self.log_dir + "fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         
+        self.image_checkpoint_dir = os.path.join(self.model_save_dir, 'image_checkpoints')
+        
         self.gen_loss = []
         self.disc_loss = []
         self.progress = []
         self.step = 0
+        
+    def predict(self, input_image, save_path='generated_image.png'):
+        prediction = self.generator.generator(input_image, training=True)
+        
+        def save_image(image, save_path):
+            if len(image.shape) == 4:
+                image = tf.squeeze(image, axis=0)
+            image = (image + 1.0) * 127.5
+            image = tf.cast(image, tf.uint8)
+            encoded_image = tf.image.encode_jpeg(image)
+            tf.io.write_file(save_path, encoded_image)
+            # print(f"Generated image saved to {save_path}")
+            
+        save_image(prediction, save_path)
+        return prediction
 
-    def generate_images(self, test_input, tar, save_dir='image_checkpoints/', epoch=0, step=0):
+    def generate_images(self, test_input, tar, save_dir=None, epoch=0, step=0):
+        if save_dir == None:
+            save_dir = self.image_checkpoint_dir
+        else: save_dir = os.path.join(self.model_save_dir, save_dir)
+        
         print(f"Generating images at epoch {epoch}, step {step}")
         prediction = self.generator.generator(test_input, training=True)
 
@@ -99,7 +123,34 @@ class EYES_GAN:
         
         return gen_total_loss, gen_gan_loss, gen_l1_loss, disc_loss
 
-    def fit(self, train_ds, test_ds, epochs, learning_rate, checkpoint_interval=1000):
+    def fit(self, model_name, train_ds, test_ds, epochs, learning_rate, checkpoint_interval=1000):
+        self.model_name = model_name
+        self.model_save_dir = os.path.join('models', self.model_name)
+        print("[INFO] Model Save Directory Set: ", self.model_save_dir)
+        
+        # Clear Existing Training
+        model_path = os.path.join('models', model_name)
+        if os.path.exists(model_path):
+            # Delete all files and folders inside the directory
+            print(f"[INFO] Clearing existing training in path: ", model_path)
+            for filename in os.listdir(model_path):
+                file_path = os.path.join(model_path, filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)  # Remove the file or link
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)  # Remove the directory and its contents
+                except Exception as e:
+                    print(f'[ERROR] Failed to delete {file_path}. Reason: {e}')
+        else: 
+            os.makedirs(model_path, exist_ok=True)
+        
+        self.checkpoint_dir = os.path.join(self.model_save_dir, 'training_checkpoints')
+        print("[INFO] Training Checkpoint Directory Set: ", self.checkpoint_dir)
+        
+        self.image_checkpoint_dir = os.path.join(self.model_save_dir, 'image_checkpoints')
+        print("[INFO] Image Checkpoint Directory Set: ", self.image_checkpoint_dir)
+        
         example_input, example_target = next(iter(test_ds.take(1)))
         example_input, example_target = example_input[0], example_target[0]
 
@@ -130,7 +181,7 @@ class EYES_GAN:
                     })
 
                 if (step + 1) % checkpoint_interval == 0:
-                    self.generate_images(input_image[0], target[0], epoch=epoch, step=step + 1)
+                    self.generate_images(test_input=input_image[0], tar=target[0], epoch=epoch, step=step + 1)
                     self.checkpoint.save(file_prefix=self.checkpoint_prefix)
                     print(f"Checkpoint saved at step {step + 1} of epoch {epoch}")
 
@@ -142,7 +193,7 @@ class EYES_GAN:
             print("[FIT] PROGRESS: ", progress_percentage)
             print("[FIT] GENERATOR LOSS: ", self.gen_loss[-1].numpy())
             print("[FIT] DISCRIMINATOR LOSS: ", self.disc_loss[-1].numpy())
-            self.generate_images(input_image[0], target[0], epoch=epoch, step=steps_per_epoch)
+            self.generate_images(test_input=input_image[0], tar=target[0], epoch=epoch, step=steps_per_epoch)
             self.checkpoint.save(file_prefix=self.checkpoint_prefix)
             print(f"Checkpoint saved at the end of epoch {epoch}")
 
@@ -151,13 +202,20 @@ class EYES_GAN:
         self.summary_writer.close()
 
 
-    def restore(self):
-        latest_checkpoint = tf.train.latest_checkpoint(self.checkpoint_dir)
-        if (latest_checkpoint):
-            self.checkpoint.restore(latest_checkpoint)
-            print(f"Restored from {latest_checkpoint}")
+    def restore(self, checkpoint_nr=-1):
+        if checkpoint_nr == -1:
+            checkpoint_path = tf.train.latest_checkpoint(self.checkpoint_dir)
         else:
-            print("No checkpoint found.")
+            checkpoint_path = tf.train.latest_checkpoint(self.checkpoint_dir)
+            if checkpoint_path:
+                # Use regular expression to replace the number after ckpt-
+                checkpoint_path = re.sub(r'ckpt-\d+', f'ckpt-{checkpoint_nr}', checkpoint_path)
+        
+        if (checkpoint_path):
+            self.checkpoint.restore(checkpoint_path)
+            print(f"Restored from {checkpoint_path}")
+        else:
+            print(f"No checkpoint found in: {checkpoint_path}")
 
     def validate(self, val_dataset, save_dir='validated_images', validation_dataset_percentage=10):
         print("Running validation...")
