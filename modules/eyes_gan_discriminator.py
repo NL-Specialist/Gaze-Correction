@@ -46,5 +46,12 @@ class EYES_GAN_DISCRIMINATOR:
         real_loss = loss_object(tf.ones_like(disc_real_output), disc_real_output)
         generated_loss = loss_object(tf.zeros_like(disc_generated_output), disc_generated_output)
         total_disc_loss = real_loss + generated_loss
+    
+        # Check for NaN in losses
+        if tf.reduce_any(tf.math.is_nan(real_loss)) or tf.reduce_any(tf.math.is_nan(generated_loss)):
+            print(f"NaN detected in discriminator loss calculation")
+            return tf.constant(float('nan'))
+    
         print(f"Discriminator loss: {total_disc_loss}, Real loss: {real_loss}, Generated loss: {generated_loss}")
         return total_disc_loss
+

@@ -12,7 +12,7 @@ print("Displaying model information.")
 model.info()
 
 # Define the path to the input image
-input_image_path = r"datasets\Test3_Dataset\at_camera\image_1\full_frame.jpg"
+input_image_path = r"/home/chatbot/GAN/Gaze Correction FYP/cheese.jpg"
 print(f"Input image path: {input_image_path}")
 
 # Load the image using OpenCV
@@ -28,14 +28,14 @@ else:
 
 # Rotate the image 90 degrees counterclockwise
 print("Rotating the image 90 degrees counterclockwise.")
-image_rotated = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+# image_rotated = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
 # Print shape of the rotated image
-print(f"Rotated image shape: {image_rotated.shape}")
+# print(f"Rotated image shape: {image_rotated.shape}")
 
 # Segment the entire rotated image using the SAM model
 print("Running segmentation on the rotated image.")
-results = model(image_rotated)
+results = model(image)
 
 # Check if the results contain masks
 if hasattr(results, 'masks') and results.masks is not None:
@@ -43,11 +43,11 @@ if hasattr(results, 'masks') and results.masks is not None:
     # Draw the segmentation results on the image
     for i, mask in enumerate(results.masks):
         print(f"Processing mask {i+1}/{len(results.masks)}.")
-        image_rotated[mask] = (0, 255, 0)  # Example color for the mask
+        image[mask] = (0, 255, 0)  # Example color for the mask
 
     # Display the segmented and rotated image
     print("Displaying the segmented and rotated image.")
-    cv2.imshow("Segmented Image", image_rotated)
+    cv2.imshow("Segmented Image", image)
 else:
     print("Error: No masks found in the results.")
 
@@ -60,8 +60,8 @@ print("Closing all OpenCV windows.")
 cv2.destroyAllWindows()
 
 # Optionally, save the segmented and rotated image to a file
-output_image_path = r"datasets\Test3_Dataset\at_camera\image_1\full_frame_segmented.jpg"
+output_image_path = r"/home/chatbot/GAN/Gaze Correction FYP/cheese_segmented.jpg"
 print(f"Saving the segmented and rotated image to: {output_image_path}")
-cv2.imwrite(output_image_path, image_rotated)
+cv2.imwrite(output_image_path, image)
 
 print("Script finished.")

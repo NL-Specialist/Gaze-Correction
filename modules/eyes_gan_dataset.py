@@ -221,7 +221,7 @@ class EYES_GAN_DATASET:
 
         # Map the datasets to the respective loading functions
         train_input_dataset = train_input_dataset.map(self.load_image_train, num_parallel_calls=tf.data.AUTOTUNE)
-        train_input_dataset = train_input_dataset.shuffle(self.BUFFER_SIZE)
+        # train_input_dataset = train_input_dataset.shuffle(self.BUFFER_SIZE)
         train_input_dataset = train_input_dataset.batch(self.BATCH_SIZE)
 
         test_input_dataset = test_input_dataset.map(self.load_image_test)
@@ -231,7 +231,7 @@ class EYES_GAN_DATASET:
         val_input_dataset = val_input_dataset.batch(self.BATCH_SIZE)
 
         train_target_dataset = train_target_dataset.map(self.load_image_train, num_parallel_calls=tf.data.AUTOTUNE)
-        train_target_dataset = train_target_dataset.shuffle(self.BUFFER_SIZE)
+        # train_target_dataset = train_target_dataset.shuffle(self.BUFFER_SIZE)
         train_target_dataset = train_target_dataset.batch(self.BATCH_SIZE)
 
         test_target_dataset = test_target_dataset.map(self.load_image_test)
