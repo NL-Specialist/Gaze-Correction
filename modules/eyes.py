@@ -12,8 +12,8 @@ class Eyes:
         try:
             self.face_mesh = mp.solutions.face_mesh.FaceMesh(static_image_mode=False,
                                                              max_num_faces=1,
-                                                             min_detection_confidence=0.5,
-                                                             min_tracking_confidence=0.5)
+                                                             min_detection_confidence=0.4,
+                                                             min_tracking_confidence=0.4)
             self.drawing_spec = mp.solutions.drawing_utils.DrawingSpec(thickness=1, circle_radius=1)
             self.fixed_box_height = 24  # Fixed bounding box height
             self.fixed_box_width = 50   # Fixed bounding box width

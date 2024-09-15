@@ -44,7 +44,7 @@ async def load_GAN(model_name):
     global eyes_gan, generator, discriminator
     
     if model_name == 'disabled':
-        offload_model()
+        await offload_model()
         return {"status": "Model offloaded successfully.", "checkpoint_list":[]}
     
     # Initialize the generator
@@ -349,7 +349,6 @@ async def get_checkpoint_image(request: GetCheckpointImageRequest):
     return {"error": "File not found or error occurred after max retries"}
     
 
-
 async def read_image(file: UploadFile):
     """Reads an uploaded image file and converts it to a numpy array."""
     contents = await file.read()
@@ -357,54 +356,6 @@ async def read_image(file: UploadFile):
     image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
     return image
 
-@app.post("/remove_eyes/")
-async def remove_eyes(file: UploadFile = File(...)):
-    """Removes eyes from the input frame using two points provided by the user.
-
-    Args:
-        file: The input image frame (uploaded file).
-        eye_points: A list of two points representing the eyes in the form [[x1, y1], [x2, y2]].
-
-    Returns:
-        The modified frame with the eyes removed as a downloadable image.
-    """
-    # Read the uploaded file
-    frame = await read_image(file)
-    # frame_tensor = tf.expand_dims(frame, axis=0)
-
-    eye_points = [[307, 235], [218, 235]]  # Example default points
-
-    # Ensure exactly two points are provided
-    if len(eye_points) != 2:
-        print("Error: Two eye points must be provided.")
-        return {"error": "Invalid number of eye points provided"}
-
-    # Load the SAM model
-    print("Loading the SAM model.")
-    model = SAM("sam2_b.pt")
-
-    # Segment with the provided points (eyes)
-    eye_labels = [1, 1]  # Label as foreground for both eyes
-    eye_results = model(frame, points=eye_points, labels=eye_labels)
-
-    # Access the mask data from the results
-    eye_mask = eye_results[0].masks.data.sum(axis=0).cpu().numpy()  # Combine the two eye masks
-
-    # Convert the mask to uint8 format and create an inverted mask
-    eye_mask = (eye_mask > 0).astype('uint8')  # Binary mask where eyes are segmented
-    inverse_mask = 1 - eye_mask  # Invert the mask to remove eyes from the image
-
-    # Apply the inverse mask to the original frame to remove the eye segments
-    result_image = frame * inverse_mask[:, :, np.newaxis]
-
-    # Save the resulting image
-    output_dir = "segmented_images"
-    os.makedirs(output_dir, exist_ok=True)
-    output_filepath = os.path.join(output_dir, file.filename)
-    cv2.imwrite(output_filepath, result_image)
-
-    # Send the saved image back to the client
-    return FileResponse(output_filepath, media_type='image/jpeg', filename=file.filename)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8021)
