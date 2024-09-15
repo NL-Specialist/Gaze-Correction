@@ -17,6 +17,10 @@ import logging
 import asyncio
 import threading
 import glob
+import torch
+from ultralytics import SAM
+import numpy as np
+import cv2
 
 app = FastAPI()
 
@@ -36,7 +40,22 @@ DATASETS_DIRECTORY = 'datasets'
 EYE_TYPE = 'both'  # or 'left' or 'right'
 EPOCHS = 1
 
+async def load_GAN(model_name):
+    global eyes_gan, generator, discriminator
+    
+    if model_name == 'disabled':
+        await offload_model()
+        return {"status": "Model offloaded successfully.", "checkpoint_list":[]}
+    
+    # Initialize the generator
+    generator = EYES_GAN_GENERATOR(input_shape=(24, 50, 3))
 
+    # Initialize the discriminator
+    discriminator = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3))
+
+    # Initialize EYES_GAN
+    eyes_gan = EYES_GAN(model_name, generator, discriminator)
+    return True
 
 
 class LoadModelRequest(BaseModel):
@@ -52,50 +71,69 @@ async def load_model(request: LoadModelRequest):
     
     Returns:
         A JSON response indicating the success of the model loading operation.
+        A List of checkpoints corresponding to the loaded model
     """
-    global eyes_gan, generator, discriminator, model_name
+    global model_name
+    
     model_name = request.load_model_name
     
-    # Initialize the generator
-    generator = EYES_GAN_GENERATOR(input_shape=(24, 50, 3))
+    await load_GAN(model_name)
+    
+    # Get list of trained checkpoints
+    checkpoint_list = await get_model_checkpoints(model_name=model_name)
 
-    # Initialize the discriminator
-    discriminator = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3))
+    return {"status": "Model loaded successfully.", "checkpoint_list":checkpoint_list}
 
-    # Initialize EYES_GAN
-    eyes_gan = EYES_GAN(model_name, generator, discriminator)
+async def get_model_checkpoints(model_name):
+    if model_name == 'disabled':
+        return []
+    
+    checkpoints_folder = os.path.join('models', model_name, 'training_checkpoints')
+    
+    # Get the list of files in the folder
+    files = os.listdir(checkpoints_folder)
 
-    return {"status": "Model loaded successfully."}
+    # Extract unique checkpoint names (without extensions) and filter out 'checkpoint'
+    checkpoint_list = sorted(set(f.split('.')[0] for f in files if f.split('.')[0] != 'checkpoint'))
+
+    # Sort based on the numeric part of the checkpoint names
+    checkpoint_list = sorted(checkpoint_list, key=lambda x: int(x.split('-')[1]), reverse=True)
+
+    # Print the result for debugging purposes
+    print("checkpoint_list: ", checkpoint_list)
+    
+    return checkpoint_list
+
 
 # @app.post("/offload_model/")
-# async def offload_model():
-#     """
-#     Offload the EYES_GAN model and release GPU resources.
+async def offload_model():
+    """
+    Offload the EYES_GAN model and release GPU resources.
     
-#     This endpoint sets the global variables to None, deletes the model,
-#     and clears the GPU memory.
+    This endpoint sets the global variables to None, deletes the model,
+    and clears the GPU memory.
     
-#     Returns:
-#         A JSON response indicating the success of the model offloading operation.
-#     """
-#     global eyes_gan, generator, discriminator, model_name
+    Returns:
+        A JSON response indicating the success of the model offloading operation.
+    """
+    global eyes_gan, generator, discriminator, model_name
     
-#     if eyes_gan is not None:
-#         del eyes_gan
-#     if generator is not None:
-#         del generator
-#     if discriminator is not None:
-#         del discriminator
+    if eyes_gan is not None:
+        del eyes_gan
+    if generator is not None:
+        del generator
+    if discriminator is not None:
+        del discriminator
     
-#     # Clear the GPU cache
-#     torch.cuda.empty_cache()
+    # Clear the GPU cache
+    torch.cuda.empty_cache()
     
-#     eyes_gan = None
-#     generator = None
-#     discriminator = None
-#     model_name = None
+    eyes_gan = None
+    generator = None
+    discriminator = None
+    model_name = None
     
-#     return {"status": "Model offloaded successfully."}
+    return {"status": "Model offloaded successfully."}
 
 class RestoreCheckpointRequest(BaseModel):
     checkpoint_nr: int
@@ -172,7 +210,11 @@ class TrainRequest(BaseModel):
 @app.post("/train/")
 async def train(request: TrainRequest):
     global eyes_gan, model_name, epoch_count, ACTIVE_DATASET_DIRECTORY, dataset_exists
-
+    
+    model_name = request.train_model_name
+    
+    await load_GAN(model_name)
+    
     if eyes_gan is None:
         raise HTTPException(status_code=400, detail="Model not loaded. Call /load_model/ first.")
 
@@ -197,7 +239,7 @@ async def train(request: TrainRequest):
         eyes_gan.fit(model_name, train_dataset, test_dataset, epochs=request.epochs, learning_rate=request.learning_rate)
 
     # Create and start the thread
-    model_name = request.train_model_name
+
     training_thread = threading.Thread(target=train_model)
     training_thread.start()
 
@@ -305,6 +347,14 @@ async def get_checkpoint_image(request: GetCheckpointImageRequest):
         retries -= 1
 
     return {"error": "File not found or error occurred after max retries"}
+    
+
+async def read_image(file: UploadFile):
+    """Reads an uploaded image file and converts it to a numpy array."""
+    contents = await file.read()
+    np_arr = np.frombuffer(contents, np.uint8)  # Using frombuffer to avoid deprecation warning
+    image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    return image
 
 
 if __name__ == "__main__":
