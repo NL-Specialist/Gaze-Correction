@@ -14,7 +14,7 @@ class CameraModule:
         self.camera = None
         self.device_nr = 1
         self.eyes_processor = Eyes()
-        self.frame_queue = queue.Queue(maxsize=1)
+        self.frame_queue = queue.Queue(maxsize=10)
         self.camera_thread = None
         self.stop_event = threading.Event()
         self.left_eye_frame = None
@@ -196,6 +196,7 @@ class CameraModule:
             elif stream == "live-video-1":
                 processed_frame = self.eyes_processor.draw_selected_landmarks(frame, show_eyes=True, show_mouth=False, show_face_outline=False, show_text=False)
                 ret, buffer = cv2.imencode('.jpg', processed_frame)
+
                 if ret:
                     return buffer.tobytes()
                 logging.error("Failed to encode processed frame to JPEG")
@@ -204,24 +205,29 @@ class CameraModule:
             elif stream == "live-video-left":
                 processed_frame = self.eyes_processor.process_frame(frame, show_face_mesh=False, classify_gaze=True, draw_rectangles=False)
 
-                segmented_images_path = os.path.join('SEGMENT_EYES', 'input_image.jpg')
-                cv2.imwrite(segmented_images_path, processed_frame)
+                # segmented_images_path = os.path.join('SEGMENT_EYES', 'input_image.jpg')
+                # cv2.imwrite(segmented_images_path, processed_frame)
 
+                # ret, buffer = cv2.imencode('.jpg', processed_frame)
+                # if ret:
+                #     with open(segmented_images_path, "rb") as segmented_img_file:
+                #         files = {"file": segmented_img_file}
+                #         remove_eyes_response = requests.post("http://192.168.0.58:8021/remove_eyes/", files=files)
+
+                #     if remove_eyes_response.status_code == 200:
+                #         remove_eyes = remove_eyes_response.content
+                
+                #         ret, buffer = cv2.imencode('.jpg', remove_eyes)
+                #         if ret:
+                #             return buffer.tobytes()
+                        
+                
                 ret, buffer = cv2.imencode('.jpg', processed_frame)
                 if ret:
-                    with open(segmented_images_path, "rb") as segmented_img_file:
-                        files = {"file": segmented_img_file}
-                        remove_eyes_response = requests.post("http://192.168.0.58:8021/remove_eyes/", files=files)
-
-                    if remove_eyes_response.status_code == 200:
-                        remove_eyes = remove_eyes_response.content
-                
-                        ret, buffer = cv2.imencode('.jpg', remove_eyes)
-                        if ret:
-                            return buffer.tobytes()
-                        
-                logging.error("Failed to remove eyes from frame")
-                return None
+                    return buffer.tobytes()
+                else: 
+                    logging.error("Failed to remove eyes from frame")
+                    return None
 
             elif stream == "live-video-right":
                 if not self.active_model == 'disabled' and self.eyes_processor.should_correct_gaze == True:
@@ -283,7 +289,7 @@ class CameraModule:
                             return buffer.tobytes()
 
                     frame = self.eyes_processor.correct_gaze(frame, left_eye_image_output_path, right_eye_image_output_path)
-
+                    cv2.imwrite('my_frame.jpg', frame)
                 ret, buffer = cv2.imencode('.jpg', frame)
                 if ret:
                     return buffer.tobytes()
