@@ -90,20 +90,15 @@ class CameraModule:
                     continue
 
                 success, frame = self.camera.read()
-                frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                attempts = 0
-                while not success and attempts < retry_attempts:
-                    logging.warning(f"Failed to read frame from camera, retrying ({attempts + 1}/{retry_attempts})...")
-                    threading.Event().wait(retry_delay)
-                    success, frame = self.camera.read()
-                    frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                    attempts += 1
-
                 if not success:
-                    logging.error("Failed to read frame from camera after multiple attempts")
-                    break
+                    logging.error("Failed to read frame from camera")
+                    continue
 
-                # Place the raw frame in the queue
+                # Add logging for frame timestamp
+                timestamp = time.time()
+                logging.debug(f"Captured frame at timestamp: {timestamp}")
+
+                frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
                 ret, buffer = cv2.imencode('.jpg', frame)
                 if not ret:
                     logging.error("Failed to encode frame to JPEG")
