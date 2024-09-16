@@ -44,7 +44,7 @@ async def load_GAN(model_name):
     global eyes_gan, generator, discriminator
     
     if model_name == 'disabled':
-        await offload_model()
+        # await offload_model()
         return {"status": "Model offloaded successfully.", "checkpoint_list":[]}
     
     # Initialize the generator
