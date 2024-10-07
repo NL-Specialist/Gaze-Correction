@@ -10,6 +10,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import shutil
 import re
+from tensorflow.keras.mixed_precision import Policy
+from tensorflow.keras.mixed_precision import set_global_policy
+policy = Policy('mixed_float16')
+set_global_policy(policy)
+
 
 class EYES_GAN:
     def __init__(self, model_name, generator, discriminator):
@@ -170,7 +175,7 @@ class EYES_GAN:
 
             for step, (input_image, target) in progress_bar:
                 global_step = epoch * steps_per_epoch + step
-                gen_total_loss, gen_gan_loss, gen_l1_loss, disc_total_loss = self.train_step(input_image[0], target[0], global_step)
+                gen_total_loss, gen_gan_loss, gen_l1_loss, disc_total_loss = self.train_step(input_image, target, global_step)
 
                 if (step + 1) % 100 == 0:
                     progress_bar.set_postfix({
@@ -181,7 +186,7 @@ class EYES_GAN:
                     })
 
                 if (step + 1) % checkpoint_interval == 0:
-                    self.generate_images(test_input=input_image[0], tar=target[0], epoch=epoch, step=step + 1)
+                    self.generate_images(test_input=input_image, tar=target, epoch=epoch, step=step + 1)
                     self.checkpoint.save(file_prefix=self.checkpoint_prefix)
                     print(f"Checkpoint saved at step {step + 1} of epoch {epoch}")
 
@@ -193,7 +198,7 @@ class EYES_GAN:
             print("[FIT] PROGRESS: ", progress_percentage)
             print("[FIT] GENERATOR LOSS: ", self.gen_loss[-1].numpy())
             print("[FIT] DISCRIMINATOR LOSS: ", self.disc_loss[-1].numpy())
-            self.generate_images(test_input=input_image[0], tar=target[0], epoch=epoch, step=steps_per_epoch)
+            self.generate_images(test_input=input_image, tar=target, epoch=epoch, step=steps_per_epoch)
             self.checkpoint.save(file_prefix=self.checkpoint_prefix)
             print(f"Checkpoint saved at the end of epoch {epoch}")
 
