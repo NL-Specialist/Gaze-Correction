@@ -198,7 +198,7 @@ def append_dataset():
 @app.route('/backend/capture-images', methods=['POST'])
 def capture_images():
     data = request.get_json()
-    logging.debug(f"Received data: {data}")
+    print(f"Received data: {data}")
 
     dataset_mode = data.get("datasetMode")
     dataset_name = data.get("datasetName")
@@ -211,26 +211,45 @@ def capture_images():
     if not dataset_name:
         return jsonify({"error": "Dataset name is required"}), 400
 
+    # Set up dataset directory
     dataset_dir = os.path.join("datasets", dataset_name)
     os.makedirs(dataset_dir, exist_ok=True)
 
+    # Determine direction-specific directory (at_camera or away)
     out_dir = os.path.join(dataset_dir, "at_camera" if cameraDirection == "lookingAtCamera" else "away")
     os.makedirs(out_dir, exist_ok=True)
 
-    image_number = len(os.listdir(out_dir)) + 1
+    # Count existing images in the output directory and append without overwriting
+    existing_images = [f for f in os.listdir(out_dir) if f.startswith("image_")]
+    print(f"Existing images: {existing_images}")
+    
+    # Sort the existing images by their number to find the correct next image number
+    existing_image_numbers = [int(f.split('_')[1]) for f in existing_images if f.split('_')[1].isdigit()]
+    print(f"Extracted image numbers: {existing_image_numbers}")
+    
+    if existing_image_numbers:
+        image_number = max(existing_image_numbers) + 1
+    else:
+        image_number = 1
+
+    print(f"Next image number: {image_number}")
+    
     image_dir = os.path.join(out_dir, f"image_{image_number}")
     os.makedirs(image_dir, exist_ok=True)
 
-    logging.debug(f"Output directory: {dataset_dir}")
-    logging.debug(f"Image directory: {image_dir}")
+    print(f"Output directory: {dataset_dir}")
+    print(f"Image directory: {image_dir}")
 
     try:
+        # Capture frame and save it to the newly created image directory
         camera_module.capture_frame_from_queue(image_dir)
-        logging.debug("Frame capture completed successfully")
+        print("Frame capture completed successfully")
         return jsonify({"message": "Capture initiated"})
     except Exception as e:
-        logging.error(f"Error capturing frame: {str(e)}")
+        print(f"Error capturing frame: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
 
 @app.route('/backend/toggle-camera', methods=['POST'])
 def toggle_camera():
@@ -455,7 +474,7 @@ def training_progress():
         global progress, epoch_count, total_epochs, generator_losses, discriminator_losses
 
         while progress < 100:
-            time.sleep(1)
+            time.sleep(0.1)
             saved_images, checkpoint_images_path = get_checkpoint_images()
             if saved_images:
                 input_image_path = next((img for img in saved_images if "input" in img), None)

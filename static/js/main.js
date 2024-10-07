@@ -858,11 +858,14 @@ document.addEventListener('DOMContentLoaded', (event) => {
     }
 
     const startExistingDatasetButton = document.getElementById('startExistingDatasetButton');
+
     if (startExistingDatasetButton) {
         startExistingDatasetButton.addEventListener('click', () => captureImages(nr_images)); // Pass the validated number of images
     } else {
         console.log('startExistingDatasetButton not found');
     }
+
+    
 
 
     toggleDatasetMode();
@@ -883,6 +886,12 @@ document.addEventListener('DOMContentLoaded', (event) => {
             alert('Please select a dataset mode.');
             return;
         }
+
+        if (!cameraOn) {
+            alert("Please turn on camera first.");
+            return;
+        }
+
     
         const datasetMode = datasetModeElement.value;
         let datasetName;
@@ -965,14 +974,13 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 document.body.appendChild(background);
                 document.body.appendChild(popup);
             });
-        };
+        }; 
     
         const nr_images = await showPopup(`
-            You will take 2 sets of pictures.<br><br>
-            <strong>Set 1:</strong><br>
-            Direct your head in a direction and keep your eyes focused on the camera.<br><br>
-            <strong>Set 2:</strong><br>
-            Keep your head still and point your eyes away from the camera.<br><br>
+            You will take 3 sets of pictures.<br><br>
+            <strong>Notes:</strong><br>
+             - There will be a pause between each set.<br>
+             - <strong>Do Not Blink</strong> or moving during capture!<br><br>
             Please enter the number of images per set:
         `, 'Continue to Set 1', true);
     
@@ -982,40 +990,81 @@ document.addEventListener('DOMContentLoaded', (event) => {
         }
     
         const captureSet = async (cameraDirection, setDescription) => {
+            // Create the red circle if it doesn't exist yet
+            let bigRedCircle = document.getElementById('bigRedCircle');
+            if (!bigRedCircle) {
+                bigRedCircle = document.createElement('div');
+                bigRedCircle.id = 'bigRedCircle';
+                bigRedCircle.style.position = 'fixed';
+                bigRedCircle.style.width = '100px';
+                bigRedCircle.style.height = '100px';
+                bigRedCircle.style.borderRadius = '50%';
+                bigRedCircle.style.backgroundColor = 'red';
+                bigRedCircle.style.zIndex = '999';
+                document.body.appendChild(bigRedCircle);
+            }
+
+            // Show and position the red circle based on the camera direction
+            if (cameraDirection === 'lookingAtCamera') {
+                bigRedCircle.style.display = 'none';  // Hide the red circle when looking at the camera
+            } else if (cameraDirection === 'awayFromCamera') {
+                bigRedCircle.style.display = 'block';
+                bigRedCircle.style.top = '50%';  // Position towards the right for 'awayFromCamera'
+                bigRedCircle.style.left = '97%';
+                bigRedCircle.style.transform = 'translate(-50%, -50%)';
+            } else if (cameraDirection === 'awayFromCameraLeft') {
+                bigRedCircle.style.display = 'block';
+                bigRedCircle.style.top = '50%';  // Position towards the left for 'awayFromCameraLeft'
+                bigRedCircle.style.left = '3%';
+                bigRedCircle.style.transform = 'translate(-50%, -50%)';
+            }
+
+
             await showPopup(setDescription, 'Start');
-    
-            const payload = {
-                datasetMode: datasetMode,
-                datasetName: datasetName,
-                cameraDirection: cameraDirection
-            };
-    
-            const createDatasetElement = document.getElementById('CreateDataset');
-    
+        
+            let payload;
+            if (cameraDirection === 'awayFromCameraLeft') {
+                payload = {
+                    datasetMode: datasetMode,
+                    datasetName: datasetName,
+                    cameraDirection: 'awayFromCamera'
+                };
+            } else {
+                payload = {
+                    datasetMode: datasetMode,
+                    datasetName: datasetName,
+                    cameraDirection: cameraDirection
+                };
+            }
+        
+            
+        
             const progressDiv = document.createElement('div');
             progressDiv.className = 'progress-display';
             progressDiv.style.position = 'fixed';
-            progressDiv.style.top = '10%';
-            progressDiv.style.left = '50%';
-            progressDiv.style.transform = 'translateX(-50%)';
             progressDiv.style.backgroundColor = 'black';
             progressDiv.style.color = 'white';
             progressDiv.style.padding = '10px 20px';
             progressDiv.style.fontSize = '24px';
             progressDiv.style.zIndex = '1000';
-            document.body.appendChild(progressDiv);
-    
-            let flashDiv = '';
-            if (flash_status === 'on') {
-                flashDiv = document.createElement('div');
-                flashDiv.className = 'flash';
-                createDatasetElement.appendChild(flashDiv);
+        
+            // Adjust position of the progressDiv based on camera direction
+            if (cameraDirection === 'lookingAtCamera') {
+                progressDiv.style.top = '1vh';
+                progressDiv.style.left = '50vw';
+                progressDiv.style.transform = 'translateX(-50%)';
+            } else if (cameraDirection === 'awayFromCamera') {
+                progressDiv.style.top = '55vh';
+                progressDiv.style.left = '100vw';
+                progressDiv.style.transform = 'translateX(-80%)';
+            } else {
+                progressDiv.style.top = '55vh';
+                progressDiv.style.left = '0vw';
+                progressDiv.style.transform = 'translateX(0)';
             }
-    
-            const minimumDuration = (duration) => {
-                return new Promise(resolve => setTimeout(resolve, duration));
-            };
-    
+        
+            document.body.appendChild(progressDiv);
+        
             for (let i = 0; i < nr_images; i++) {
                 progressDiv.textContent = `Image ${i + 1}/${nr_images}`;
                 try {
@@ -1026,7 +1075,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
                         },
                         body: JSON.stringify(payload)
                     });
-    
+        
                     if (response.ok) {
                         const result = await response.json();
                         console.log(result.message);
@@ -1037,31 +1086,19 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 } catch (error) {
                     console.error('Error capturing images:', error);
                     alert('Error capturing images.');
-                } finally {
-                    // if (flash_status === 'on') {
-                    //     setTimeout(() => {
-                    //         flashDiv.classList.remove('flash');
-                    //         setTimeout(() => {
-                    //             flashDiv.classList.add('flash');
-                    //             setTimeout(() => {
-                    //                 flashDiv.classList.remove('flash');
-                    //                 if (i === nr_images - 1) {
-                    //                     createDatasetElement.removeChild(flashDiv);
-                    //                 }
-                    //             }, 100);
-                    //         }, 100);
-                    //     }, 100);
-                    // }
                 }
-    
-                // await minimumDuration(500);  // Ensure at least 500ms between images
             }
-    
+        
             document.body.removeChild(progressDiv);
+            
+            if (cameraDirection === 'awayFromCamera') {
+                console.log("Running third set");
+                await captureSet('awayFromCameraLeft', '<strong>Set 3:</strong><br> Keep your head still and point your eyes at the RED DOT on the LEFT.');
+            }
         };
     
-        await captureSet('lookingAtCamera', 'Set 1: Direct your head in any direction and keep your eyes pointed at the camera.');
-        await captureSet('awayFromCamera', 'Set 2: Keep your head in the same direction as Set 1 and point your eyes in the same direction as your head.');
+        await captureSet('lookingAtCamera', '<strong>Set 1:</strong><br> Direct your at the screen and keep your eyes pointed at the camera. Do Not Blink!');
+        await captureSet('awayFromCamera', '<strong>Set 2:</strong><br> Keep your head still and point your eyes in at the red dot on the RIGHT.');
         alert("Dataset Captured Successfully")
     }
     

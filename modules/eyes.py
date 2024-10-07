@@ -280,9 +280,9 @@ class Eyes:
                         image_path = 'my_frame.jpg' 
                         cv2.imwrite(image_path, frame)
 
-                        # corrected_image = extract(image_path=image_path, dest_image_path=dest_image_path)
+                        corrected_image = extract(image_path=image_path, dest_image_path=dest_image_path)
 
-            return frame
+            return corrected_image
         except Exception as e:
             logging.error(f"Error in correct_gaze: {e}")
             raise

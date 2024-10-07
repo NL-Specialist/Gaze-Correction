@@ -190,6 +190,7 @@ class CameraModule:
 
             elif stream == "live-video-1":
                 processed_frame = self.eyes_processor.draw_selected_landmarks(frame, show_eyes=True, show_mouth=False, show_face_outline=False, show_text=False)
+                processed_frame = self.eyes_processor.process_frame(processed_frame, show_face_mesh=False, classify_gaze=True, draw_rectangles=True)
                 ret, buffer = cv2.imencode('.jpg', processed_frame)
 
                 if ret:
