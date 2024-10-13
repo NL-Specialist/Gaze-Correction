@@ -7,7 +7,8 @@ import dlib
 import logging
 import os
 import requests
-
+from skimage.exposure import match_histograms
+import time
 
 class Eyes:
     def __init__(self):
@@ -87,9 +88,9 @@ class Eyes:
             if classify_gaze:
                 # Determine gaze direction
                 self.gaze_direction = self.gaze_classifier.classify_gaze(frame, show_face_mesh)
-                self.should_correct_gaze = self.gaze_direction == "Gaze Direction: Away"
+                self.should_correct_gaze = True # = self.gaze_direction == "Gaze Direction: Away"
 
-                cv2.putText(frame, self.gaze_direction, (w // 2 - 100, h // 6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(frame, self.gaze_direction, (w // 2 - 100, h // 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             if draw_rectangles and self.left_eye_bbox and self.right_eye_bbox:
                 cv2.rectangle(frame, self.left_eye_bbox[0], self.left_eye_bbox[1], (0, 255, 0), 2)
@@ -257,35 +258,87 @@ class Eyes:
             logging.error(f"Error in draw_selected_landmarks: {e}")
             raise
 
-    def correct_gaze(self, frame, corrected_left_eye_path, corrected_right_eye_path):
-        try:                        
-            dest_image_path='my_frame_away.jpg' 
+    def correct_gaze(self, frame, corrected_left_eye_path=None, corrected_right_eye_path=None):
+        try:
+            print("Starting gaze correction")
+
+            # Set default paths dynamically
+            corrected_left_eye_path = os.path.abspath('generated_images/left_eye.jpg')
+            corrected_right_eye_path = os.path.abspath('generated_images/right_eye.jpg')
+
+            # Save the original frame for away gaze
+            dest_image_path = 'my_frame_away.jpg'
             cv2.imwrite(dest_image_path, frame)
+            print(f"Saved frame to {dest_image_path}")
 
             if self.should_correct_gaze:
+                print("Gaze correction is enabled")
+                
+                # Convert frame to RGB for face mesh processing
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                print("Converted frame to RGB for face mesh processing")
+
                 results = self.face_mesh.process(rgb_frame)
+                print("Processed face landmarks")
+
                 if results.multi_face_landmarks:
                     for face_landmarks in results.multi_face_landmarks:
+                        print("Face landmarks detected, calculating eye boxes")
                         self._calculate_eye_boxes(face_landmarks, frame)
 
-                        # Load the corrected eye images from the provided paths
-                        if not corrected_left_eye_path == None:
-                            self.left_eye_img = cv2.imread(corrected_left_eye_path)
+                        # Retry loading corrected images until they exist
+                        max_retries = 5
+                        retry_count = 0
+                        while retry_count < max_retries:
+                            if os.path.exists(corrected_left_eye_path) and os.path.getsize(corrected_left_eye_path) > 0:
+                                print(f"Loading corrected left eye from {corrected_left_eye_path}")
+                                self.left_eye_img = cv2.imread(corrected_left_eye_path)
+                                if self.left_eye_img is not None:
+                                    break
+                            else:
+                                print(f"Waiting for corrected left eye image... Retry {retry_count + 1}/{max_retries}")
+                                time.sleep(0.5)  # Wait before retrying
+                                retry_count += 1
+
+                        # Similarly, retry for the right eye image
+                        retry_count = 0
+                        while retry_count < max_retries:
+                            if os.path.exists(corrected_right_eye_path) and os.path.getsize(corrected_right_eye_path) > 0:
+                                print(f"Loading corrected right eye from {corrected_right_eye_path}")
+                                self.right_eye_img = cv2.imread(corrected_right_eye_path)
+                                if self.right_eye_img is not None:
+                                    break
+                            else:
+                                print(f"Waiting for corrected right eye image... Retry {retry_count + 1}/{max_retries}")
+                                time.sleep(0.5)  # Wait before retrying
+                                retry_count += 1
+
+                        if self.left_eye_img is not None and self.right_eye_img is not None:
                             self.overlay_image(frame, self.left_eye_bbox, self.left_eye_img)
-                        if not corrected_right_eye_path == None:
-                            self.right_eye_img = cv2.imread(corrected_right_eye_path)
+                            print("Left eye overlaid on the frame")
+
                             self.overlay_image(frame, self.right_eye_bbox, self.right_eye_img)
+                            print("Right eye overlaid on the frame")
 
-                        image_path = 'my_frame.jpg' 
-                        cv2.imwrite(image_path, frame)
+                            # Save the corrected frame
+                            image_path = 'my_frame.jpg'
+                            cv2.imwrite(image_path, frame)
+                            print(f"Corrected frame saved to {image_path}")
 
-                        corrected_image = extract(image_path=image_path, dest_image_path=dest_image_path)
+                            # Extract the final corrected image
+                            corrected_image = extract(image_path=image_path, dest_image_path=dest_image_path)
+                            print("Final corrected image extracted")
+                        else:
+                            logging.error("Failed to load one or both corrected eye images.")
+                            raise FileNotFoundError("Corrected eye images were not available in time.")
 
             return corrected_image
         except Exception as e:
             logging.error(f"Error in correct_gaze: {e}")
+            print(f"Error encountered: {e}")
             raise
+
+
 
 
     def _calculate_eye_boxes(self, face_landmarks, frame):
@@ -331,20 +384,33 @@ class Eyes:
             eye_region = frame[y_min:y_max, x_min:x_max]
             eye_img_resized = cv2.resize(eye_img, (x_max - x_min, y_max - y_min))
 
+            # Histogram matching to adjust contrast and color
+            eye_img_matched = match_histograms(eye_img_resized, eye_region)
+
+            # Ensure both images have the same data type (uint8)
+            if eye_img_matched.dtype != eye_region.dtype:
+                eye_img_matched = eye_img_matched.astype(eye_region.dtype)
+
+            # Increase the weight of the eye image to make it more prominent
+            blended_eye = cv2.addWeighted(eye_region, 0.2, eye_img_matched, 0.8, 0)
+
+            # If the eye image has an alpha channel, blend only the RGB channels
             if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel
-                alpha_s = eye_img_resized[:, :, 3] / 255.0
-                alpha_l = 1.0 - alpha_s
+                eye_img_rgb = eye_img_resized[:, :, :3]  # Use only RGB channels
+                mask = eye_img_resized[:, :, 3]  # Alpha channel
+                mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR) / 255.0  # Normalize alpha mask
 
-                for c in range(0, 3):
-                    eye_region[:, :, c] = (alpha_s * eye_img_resized[:, :, c] +
-                                           alpha_l * eye_region[:, :, c])     
+                # Perform alpha blending based on the alpha channel
+                frame[y_min:y_max, x_min:x_max] = (1 - mask) * eye_region + mask * eye_img_rgb
             else:
+                # No alpha channel, use the blended image
+                frame[y_min:y_max, x_min:x_max] = blended_eye
 
-                frame[y_min:y_max, x_min:x_max] = eye_img_resized
-        
         except Exception as e:
             logging.error(f"Error in overlay_image: {e}")
             raise
+
+
 
             # Function to load an image from a file
 def load_image(path):
@@ -450,7 +516,7 @@ def detect_green_contours(image, padding=1):
     
     return padded_contours, green_mask
 
-# Main function
+# Extra eye regions only
 def extract(image_path='my_frame.jpg', dest_image_path='sam_test_image_away.jpg'):
     # Load input and destination images
     image = load_image(image_path)

@@ -247,6 +247,14 @@ function toggleDatasetMode() {
     }
 }
 
+const correctionSelectModel = document.getElementById('correction-select-model');
+const checkpointDropdown = document.getElementById('correction-select-model-checkpoint');
+
+// Function to toggle the correction select dropdown based on cameraOn value
+function toggleCorrectionSelectModel() {
+    correctionSelectModel.disabled = !cameraOn;
+}
+
 document.addEventListener('DOMContentLoaded', (event) => {
     document.getElementById('correction-select-model').addEventListener('change', function () {
         const selectedModel = this.value;
@@ -976,11 +984,11 @@ document.addEventListener('DOMContentLoaded', (event) => {
             });
         }; 
     
-        const nr_images = await showPopup(`
+        let nr_images = await showPopup(`
             You will take 3 sets of pictures.<br><br>
             <strong>Notes:</strong><br>
-             - There will be a pause between each set.<br>
-             - <strong>Do Not Blink</strong> or moving during capture!<br><br>
+            - There will be a pause between each set.<br>
+            - <strong>Do Not Blink</strong> or move during capture!<br><br>
             Please enter the number of images per set:
         `, 'Continue to Set 1', true);
     
@@ -1065,8 +1073,14 @@ document.addEventListener('DOMContentLoaded', (event) => {
         
             document.body.appendChild(progressDiv);
         
-            for (let i = 0; i < nr_images; i++) {
-                progressDiv.textContent = `Image ${i + 1}/${nr_images}`;
+            if (cameraDirection !== 'lookingAtCamera'){
+                total_images = nr_images/2;
+            }else{
+                total_images = nr_images;
+            }
+
+            for (let i = 0; i < total_images; i++) {
+                progressDiv.textContent = `Image ${i + 1}/${total_images}`;
                 try {
                     const response = await fetch('/backend/capture-images', {
                         method: 'POST',
@@ -1088,6 +1102,8 @@ document.addEventListener('DOMContentLoaded', (event) => {
                     alert('Error capturing images.');
                 }
             }
+
+            bigRedCircle.style.display = 'none';  // Hide the red circle when looking at the camera
         
             document.body.removeChild(progressDiv);
             
@@ -1116,7 +1132,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
         statusMessage.classList.add('info'); // Add info class
 
         // Start the animation
-        startDotDotDotAnimation(statusMessage, 'Waiting for camera');
+        startLoadingAnimation(statusMessage, '');
 
         try {
             console.log('Sending POST request to /backend/toggle-camera');
@@ -1131,7 +1147,8 @@ document.addEventListener('DOMContentLoaded', (event) => {
             if (response.ok) {
                 const result = await response.json();
                 console.log('Response OK:', result);
-                statusMessage.textContent = `${result.status}`;  // Update status message
+                
+                
                 statusMessage.classList.remove('info');  // Remove info class
                 statusMessage.classList.add('success');  // Add success class
 
@@ -1139,17 +1156,25 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 console.log("my toggle camera before: ", cameraOn)
                 if (result.status === 'On'){
                     cameraOn =  true;
+                    statusMessage.textContent = '🛑';
+                    toggleCorrectionSelectModel();
                 }else{
                     cameraOn =  false;
+                    statusMessage.textContent = '📷';
+                    toggleCorrectionSelectModel();
                 }
-                
+                                
+
+
+
                 console.log("my toggle camera after: ", cameraOn)
                 refreshLiveViews();
 
             } else {
                 const errorData = await response.json();
                 console.log('Response error:', errorData);
-                statusMessage.textContent = `Failed to toggle camera: ${errorData.error}`;  // Update status message
+                // statusMessage.textContent = `Failed to toggle camera: ${errorData.error}`;  // Update status message
+                statusMessage.textContent = `ERROR`;
                 statusMessage.classList.remove('info');  // Remove info class
                 statusMessage.classList.add('error');  // Add error class
             }
@@ -1170,14 +1195,28 @@ document.addEventListener('DOMContentLoaded', (event) => {
         manageWebsockets(activeTabName);
     }
 
-    function startDotDotDotAnimation(element, baseText) {
-        let dotCount = 0;
+    function startLoadingAnimation(element, baseText) {
+        // Create a container to hold the baseText and loading icon
+        const loadingContainer = document.createElement('span');
+        loadingContainer.textContent = baseText;
+    
+        // Create the loading icon element
+        const loadingIcon = document.createElement('div');
+        loadingIcon.classList.add('loading-icon');
+    
+        // Append the loading icon to the container
+        loadingContainer.appendChild(loadingIcon);
+    
+        // Clear any existing content in the element and append the new container
+        element.innerHTML = '';
+        element.appendChild(loadingContainer);
+    
+        // Store the interval ID globally for later use if needed
         animationInterval = setInterval(() => {
-            let dots = '.'.repeat(dotCount % 4);
-            element.textContent = `${baseText}${dots}`;
-            dotCount++;
-        }, 500);  // Adjust the interval as needed
+            // Animation logic handled by CSS, so this is a placeholder to keep consistency
+        }, 1000);  // Adjust interval if needed, but the CSS handles the animation
     }
+    
 
     function toggleDatasetMode() {
         const newDatasetOptions = document.getElementById('newDatasetOptions');
@@ -1221,9 +1260,11 @@ document.addEventListener('DOMContentLoaded', (event) => {
             if (response.ok) {
                 const result = await response.json();
                 console.log('Initial camera state retrieved successfully:', result);
-                statusMessage.textContent = `${result.camera_on ? 'On' : 'Off'}`;
+                statusMessage.textContent = `${result.camera_on ? '🛑' : '📷'}`; // Camera emoji for "On" and crossed circle for "Off"
+                statusMessage.style.fontSize = '48px';
                 statusMessage.classList.remove('info');  // Remove info class
                 statusMessage.classList.add('success');  // Add success class
+                
 
                 // Initialize WebSocket connections
                 

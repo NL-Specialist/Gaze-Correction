@@ -330,20 +330,11 @@ h1 {
     align-items: center;
     animation: slideInLeft 1.5s forwards;
 }
-/* 
+ 
 #live-video-left {
-    margin-top: 10vh;
-} */
-
-@keyframes slideInLeft {
-    from {
-        opacity: 0;
-        transform: translateX(-100%);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
+    /* margin-top: 10vh; */
+    height: 100vh;
+    width: 100vw;
 }
 
 #right-panel {
@@ -358,10 +349,27 @@ h1 {
     align-items: center;
     animation: slideInRight 1.5s forwards;
 }
-/* 
+
 #live-video-right {
-    margin-top: 10vh; 
-} */
+    /* margin-top: 10vh;  */
+    height: 100vh;
+    width: 100vw;
+} 
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+
+
+
 
 @keyframes slideInRight {
     from {
@@ -382,16 +390,14 @@ h1 {
     font-family: 'Montserrat', sans-serif; /* Modern font */
     font-size: 13px; /* Adjust font size */
     color: #ffffff; /* Text color */
-    padding: 20px; /* Padding for spacing */
-    border: none; /* Remove border */
-    border-radius: 50%; /* Fully rounded corners for circle */
+    background-color: transparent;
     text-align: center; /* Center the text */
-    width: 50px; /* Fixed width */
-    height: 50px; /* Fixed height */
+    width: 60px; /* Fixed width */
+    height: 60px; /* Fixed height */
     margin-left: auto; /* Center horizontally */
     margin-right: auto; /* Center horizontally */
     /* margin-top: -10px; */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Slight shadow */
+    /* box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); Slight shadow */
     transition: transform 0.3s ease, background-color 0.3s ease; /* Smooth transition for hover effects */
     cursor: pointer; /* Pointer cursor on hover */
     animation: slideInUp 2s forwards;
@@ -410,29 +416,35 @@ h1 {
 
 /* Hover effects */
 #statusMessage:hover {
-    transform: scale(1.05); /* Slightly enlarge on hover */
+    font-size: 1.5em; /* Increase font size on hover */
+    transition: font-size 0.3s ease; /* Smooth transition */
 }
 
 /* Click effects */
 #statusMessage:active {
-    transform: scale(0.95); /* Slightly scale down on click */
+    font-size: 0.95em; /* Slightly decrease font size on click */
 }
+
 
 /* Additional styles for different statuses */
 #statusMessage.success {
-    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%); /* Green gradient for success */
+    color: green;
+    /* background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%); Green gradient for success */
 }
 
 #statusMessage.error {
-    background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%); /* Red gradient for error */
+    color: red;
+    /* background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%); Red gradient for error */
 }
 
 #statusMessage.info {
-    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); /* Blue gradient for info */
+    color: white;
+    /* background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); Blue gradient for info */
 }
 
 #statusMessage.disabled {
-    background: linear-gradient(135deg, #bdc3c7 0%, #2c3e50 100%); /* Grey gradient for disabled */
+    color: gray;
+    /* background: linear-gradient(135deg, #bdc3c7 0%, #2c3e50 100%); Grey gradient for disabled */
     cursor: not-allowed; /* Not-allowed cursor for disabled */
     box-shadow: none; /* Remove shadow for disabled */
     pointer-events: none; /* Disable pointer events */
@@ -1183,3 +1195,17 @@ canvas {
 }
 
 
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-icon {
+    border: 4px solid rgba(255, 255, 255, 0.2);  /* Light grey */
+    border-top: 4px solid white;                 /* White */
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+}

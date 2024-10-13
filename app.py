@@ -295,6 +295,8 @@ def handle_start_video(data):
                         'type': stream,
                         'frame': frame
                     })
+
+                
             else:
                 logging.warning("No frame received from get_frame() method")
     
@@ -311,7 +313,7 @@ def send_image(filename):
 
 @app.route('/image_checkpoints/<epoch>/')
 def get_image(epoch):
-    base_dir = f'models/{model_name}/image_checkpoints'
+    base_dir = f'models/{model_name}'+'_left/' + 'image_checkpoints'
     epoch = int(epoch)
     
     input_image_path = None
@@ -499,7 +501,7 @@ def training_progress():
     return Response(event_generator(), content_type='text/event-stream')
 
 
-def get_checkpoint_images(timeout=300):
+def get_checkpoint_images(timeout=600):
     global progress, generator_losses, discriminator_losses, epoch_count, model_path, model_name
     try:
         print("Sending get checkpoint request, waiting for response...")
@@ -534,9 +536,9 @@ def get_checkpoint_images(timeout=300):
             generator_loss = checkpoint_data.get("generator_loss", 0)
             discriminator_loss = checkpoint_data.get("discriminator_loss", 0)
 
-            # print(f"Updated Checkpoint Progress: {progress}%")
-            # print(f"Updated Checkpoint Generator loss: {generator_loss}")
-            # print(f"Updated Checkpoint Discriminator loss: {discriminator_loss}")
+            print(f"Updated Checkpoint Progress: {progress}%")
+            print(f"Updated Checkpoint Generator loss: {generator_loss}")
+            print(f"Updated Checkpoint Discriminator loss: {discriminator_loss}")
 
             generator_losses.append(generator_loss)
             discriminator_losses.append(discriminator_loss)
