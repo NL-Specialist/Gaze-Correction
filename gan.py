@@ -21,19 +21,36 @@ import torch
 from ultralytics import SAM
 import numpy as np
 import cv2
+from concurrent.futures import ThreadPoolExecutor
+import threading
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+
 
 app = FastAPI()
 
 # Initialize logger
 logging.basicConfig(level=logging.DEBUG)
 
+executor = ThreadPoolExecutor()
+
 # Global variables for GAN components
-eyes_gan = None
-generator = None
-discriminator = None
+eyes_gan_left = None
+eyes_gan_right = None
+
+generator_right = None
+discriminator_right = None
+
+generator_left = None
+discriminator_left = None
+
 epoch_count = 0
 prev_progress = -1
 dataset_exists = False
+
+device_left = "0"
+device_right = "1"
+
 
 # Directories and settings
 DATASETS_DIRECTORY = 'datasets'
@@ -41,20 +58,24 @@ EYE_TYPE = 'both'  # or 'left' or 'right'
 EPOCHS = 1
 
 async def load_GAN(model_name):
-    global eyes_gan, generator, discriminator
+    global eyes_gan_left, eyes_gan_right, generator_left, discriminator_left, generator_right, discriminator_right
     
     if model_name == 'disabled':
         # await offload_model()
         return {"status": "Model offloaded successfully.", "checkpoint_list":[]}
     
     # Initialize the generator
-    generator = EYES_GAN_GENERATOR(input_shape=(24, 50, 3))
+    generator_left = EYES_GAN_GENERATOR(input_shape=(24, 50, 3), gpu_index=device_left)
+    generator_right = EYES_GAN_GENERATOR(input_shape=(24, 50, 3), gpu_index=device_right)
 
     # Initialize the discriminator
-    discriminator = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3))
+    discriminator_left = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3), gpu_index=device_left)
+    discriminator_right = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3), gpu_index=device_right)
 
     # Initialize EYES_GAN
-    eyes_gan = EYES_GAN(model_name, generator, discriminator)
+    eyes_gan_left = EYES_GAN('left_model', generator_left, discriminator_left, device_left)
+    eyes_gan_right = EYES_GAN('right_model', generator_right, discriminator_right, device_right)
+    
     return True
 
 
@@ -77,12 +98,17 @@ async def load_model(request: LoadModelRequest):
     
     model_name = request.load_model_name
     
+    if model_name == 'disabled':
+        # await offload_model()
+        return {"status": "Model disabled.", "checkpoint_list":[]}
+    
     await load_GAN(model_name)
     
     # Get list of trained checkpoints
-    checkpoint_list = await get_model_checkpoints(model_name=model_name)
+    checkpoint_list_left = await get_model_checkpoints(model_name=model_name+'_left')
+    checkpoint_list_right = await get_model_checkpoints(model_name=model_name+'_right')
 
-    return {"status": "Model loaded successfully.", "checkpoint_list":checkpoint_list}
+    return {"status": "Model loaded successfully.", "checkpoint_list":checkpoint_list_left}
 
 async def get_model_checkpoints(model_name):
     if model_name == 'disabled':
@@ -116,21 +142,30 @@ async def offload_model():
     Returns:
         A JSON response indicating the success of the model offloading operation.
     """
-    global eyes_gan, generator, discriminator, model_name
+    global eyes_gan_left, eyes_gan_right, generator_right, discriminator_right, generator_left, discriminator_left, model_name
     
-    if eyes_gan is not None:
-        del eyes_gan
-    if generator is not None:
-        del generator
-    if discriminator is not None:
-        del discriminator
+    if eyes_gan_left is not None or eyes_gan_right is not None:
+        del eyes_gan_left
+        del eyes_gan_right
+    if generator_left is not None or generator_right is not None:
+        del generator_left
+        del generator_right
+    if discriminator_left is not None or discriminator_right is not None:
+        del discriminator_left
+        del discriminator_right
     
     # Clear the GPU cache
     torch.cuda.empty_cache()
     
-    eyes_gan = None
-    generator = None
-    discriminator = None
+    eyes_gan_left = None
+    eyes_gan_right = None
+    
+    generator_right = None
+    discriminator_right = None
+    
+    generator_left = None
+    discriminator_left = None
+    
     model_name = None
     
     return {"status": "Model offloaded successfully."}
@@ -139,39 +174,51 @@ class RestoreCheckpointRequest(BaseModel):
     checkpoint_nr: int
     
 @app.post('/restore_checkpoint/')
-def retore_checkpoint(request: RestoreCheckpointRequest):
-    global eyes_gan
-    # Restore the model from the latest checkpoint
-    eyes_gan.restore(request.checkpoint_nr)
+async def restore_checkpoint(request: RestoreCheckpointRequest):
+    global eyes_gan_left, eyes_gan_right 
+    # Restore the model from the specified checkpoint
+    await eyes_gan_left.restore(request.checkpoint_nr)
+    await eyes_gan_right.restore(request.checkpoint_nr)
+    
     return {"status": "Checkpoint restored successfully."}
 
 @app.post("/generate_image/")
-async def generate_image(file: UploadFile = File(...)):
+async def generate_image(left_eye: UploadFile = File(...), right_eye: UploadFile = File(...)):
     """
-    Generate an image using the loaded EYES_GAN model.
-    
-    This endpoint receives an image file, decodes it, processes it using the 
-    generator model, and saves the generated image to a specified path.
+    Generate images using the loaded EYES_GAN model for both eyes.
     
     Args:
-        file: An uploaded image file to be processed by the model.
+        left_eye: Uploaded left eye image file.
+        right_eye: Uploaded right eye image file.
     
     Returns:
-        The generated image file.
+        JSON containing the paths of the corrected images for both eyes.
     """
-    global eyes_gan
-    if eyes_gan is None:
+    global eyes_gan_left, eyes_gan_right
+
+    if eyes_gan_left is None or eyes_gan_right is None:
         return {"error": "Model not loaded. Call /load_model/ first."}
 
-    # Read the uploaded file
-    img = await read_image(file)
-    img = tf.expand_dims(img, axis=0)
+    # Read the uploaded left and right eye images
+    left_img = await read_image(left_eye)
+    right_img = await read_image(right_eye)
 
-    # Generate image
-    output_filepath = os.path.join("generated_images", file.filename)
-    generated_image = eyes_gan.predict(img, save_path=output_filepath)
+    left_img = tf.expand_dims(left_img, axis=0)
+    right_img = tf.expand_dims(right_img, axis=0)
 
-    return FileResponse(output_filepath)
+    # Generate the images for both eyes
+    output_left_filepath = os.path.join("generated_images", left_eye.filename)
+    output_right_filepath = os.path.join("generated_images", right_eye.filename)
+
+    await eyes_gan_left.predict(left_img, save_path=output_left_filepath)
+    await eyes_gan_right.predict(right_img, save_path=output_right_filepath)
+
+    # Return the paths of the generated images in a JSON response
+    return {
+        "left_eye": output_left_filepath,
+        "right_eye": output_right_filepath
+    }
+
 
 
 async def read_image(file: UploadFile):
@@ -200,53 +247,53 @@ async def save_dataset_image(file: UploadFile = File(...), path: str = Form(...)
     logging.info(f"Saved file to: {save_path}")
     return JSONResponse(content={"message": "File saved successfully"})
 
-# Define a Pydantic model for the input
 class TrainRequest(BaseModel):
     train_model_name: str
     dataset_path: str
     epochs: int
     learning_rate: float
-    
+
 @app.post("/train/")
 async def train(request: TrainRequest):
-    global eyes_gan, model_name, epoch_count, ACTIVE_DATASET_DIRECTORY, dataset_exists
+    global eyes_gan_left, eyes_gan_right, model_name, epoch_count, ACTIVE_DATASET_DIRECTORY, dataset_exists
     
     model_name = request.train_model_name
-    
     await load_GAN(model_name)
     
-    if eyes_gan is None:
+    if eyes_gan_left is None or eyes_gan_right is None:
         raise HTTPException(status_code=400, detail="Model not loaded. Call /load_model/ first.")
 
     ACTIVE_DATASET_DIRECTORY = request.dataset_path
-    logging.debug(f"Set active dataset: {ACTIVE_DATASET_DIRECTORY}")
     
     if not dataset_exists:
-        print(f'[INFO] Dataset does not exist: ')
-        logging.debug(f"Splitting dataset...")
+        logging.debug(f"Splitting dataset at: {ACTIVE_DATASET_DIRECTORY}")
         split_folders(ACTIVE_DATASET_DIRECTORY)
         logging.debug(f"Dataset split successfully!")
     
-    logging.info("Loading dataset...")
     eyes_gan_dataset = EYES_GAN_DATASET(dataset_path=ACTIVE_DATASET_DIRECTORY, debug=True)
-    train_dataset, test_dataset, val_dataset = eyes_gan_dataset.prepare_datasets(eye_type=EYE_TYPE)
-    logging.info("Dataset loaded successfully.")
+    
+    train_dataset_left, test_dataset_left, val_dataset_left = eyes_gan_dataset.prepare_datasets(eye_type='left')
+    train_dataset_right, test_dataset_right, val_dataset_right = eyes_gan_dataset.prepare_datasets(eye_type='right')
+    
+    async def train_model_left():
+        await eyes_gan_left.fit(model_name+'_left', train_dataset_left, test_dataset_left, epochs=request.epochs, learning_rate=request.learning_rate)
+        
+    async def train_model_right():
+        await eyes_gan_right.fit(model_name+'_right', train_dataset_right, test_dataset_right, epochs=request.epochs, learning_rate=request.learning_rate)
 
-    logging.info(f"Starting training loop... Total Epochs: {request.epochs}")
+    # Function to run async code in a thread
+    def run_async_train_model_left():
+        asyncio.run(train_model_left())
+    
+    def run_async_train_model_right():
+        asyncio.run(train_model_right())
 
-    def train_model():
-        global model_name
-        eyes_gan.fit(model_name, train_dataset, test_dataset, epochs=request.epochs, learning_rate=request.learning_rate)
+    # Run the training processes in separate threads
+    executor.submit(run_async_train_model_left)
+    executor.submit(run_async_train_model_right)
 
-    # Create and start the thread
-
-    training_thread = threading.Thread(target=train_model)
-    training_thread.start()
-
-    logging.info("Training started.")
-    epoch_count = 0
-
-    return {"status": "TRAINING SUCCESSFUL"}
+    # Return immediately without waiting for threads to finish
+    return {"status": "TRAINING_STARTED"}
 
 def generate_initial_test_images(test_dataset):
     """
@@ -293,8 +340,8 @@ class GetCheckpointImageRequest(BaseModel):
 async def get_checkpoint_image(request: GetCheckpointImageRequest):
     global epoch_count, prev_progress, eyes_gan
     
-    base_path = os.path.join("models", request.checkpoint_image_model_name, "image_checkpoints")
-    print("My epoch count: ", epoch_count)
+    base_path = os.path.join("models", request.checkpoint_image_model_name +'_left', "image_checkpoints")
+    print(f"My epoch count:  {epoch_count} at base path: {base_path}")
     patterns = [
         f"image_at_epoch_{epoch_count}_step_*.png",
         f"image_input_at_epoch_{epoch_count}_step_*.png",
@@ -313,7 +360,7 @@ async def get_checkpoint_image(request: GetCheckpointImageRequest):
                 matched_files.extend(glob.glob(os.path.join(base_path, pattern)))
 
             if matched_files:
-                print('DEBUG: Sent Checkpoint Image.')
+                
                 images_content = {}
                 progress = eyes_gan.progress[epoch_count]
                 if prev_progress == progress:
@@ -330,6 +377,7 @@ async def get_checkpoint_image(request: GetCheckpointImageRequest):
                     images_content[os.path.basename(file_path)] = image_content
 
                 epoch_count += 1
+                print(f'DEBUG: Sent Checkpoint Image. Content: {images_content}')
                 return {
                     "images": images_content,
                     "progress": int(progress),

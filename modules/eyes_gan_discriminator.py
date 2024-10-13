@@ -1,10 +1,15 @@
 import tensorflow as tf
+import os
 
 class EYES_GAN_DISCRIMINATOR:
-    def __init__(self, input_shape=(24, 50, 3)):
+    def __init__(self, input_shape=(24, 50, 3), gpu_index='0'):
         self.input_shape = input_shape
-        self.discriminator = self.build_discriminator()
-
+        
+        self.device = f'GPU:{gpu_index}'  # This will always refer to the first visible GPU after setting CUDA_VISIBLE_DEVICES
+        print(f"[INFO] Using device: {self.device}")
+        
+        with tf.device(self.device):  # Set the device context
+            self.discriminator = self.build_discriminator()
 
     def downsample(self, filters, size, apply_batchnorm=True):
         """Downsamples an input by a factor of 2."""
@@ -46,12 +51,11 @@ class EYES_GAN_DISCRIMINATOR:
         real_loss = loss_object(tf.ones_like(disc_real_output), disc_real_output)
         generated_loss = loss_object(tf.zeros_like(disc_generated_output), disc_generated_output)
         total_disc_loss = real_loss + generated_loss
-    
+
         # Check for NaN in losses
         if tf.reduce_any(tf.math.is_nan(real_loss)) or tf.reduce_any(tf.math.is_nan(generated_loss)):
             print(f"NaN detected in discriminator loss calculation")
             return tf.constant(float('nan'))
-    
+
         print(f"Discriminator loss: {total_disc_loss}, Real loss: {real_loss}, Generated loss: {generated_loss}")
         return total_disc_loss
-

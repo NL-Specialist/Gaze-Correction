@@ -204,4 +204,3 @@ class EYES_GAN_DATASET:
         print(summary_df)
 
         return train_dataset, test_dataset, val_dataset
-
