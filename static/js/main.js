@@ -256,6 +256,7 @@ function toggleCorrectionSelectModel() {
 }
 
 document.addEventListener('DOMContentLoaded', (event) => {
+
     document.getElementById('correction-select-model').addEventListener('change', function () {
         const selectedModel = this.value;
         const checkpointDropdown = document.getElementById('correction-select-model-checkpoint');
@@ -268,15 +269,21 @@ document.addEventListener('DOMContentLoaded', (event) => {
             checkpointDropdown.style.display = "inline-block";
         }
 
+
         sendSelectedModel(selectedModel);
     });
+
+    sendSelectedModel('Auto');
 
     document.getElementById('correction-select-model-checkpoint').addEventListener('change', function () {
         const selectedCheckpoint = this.value;
 
         sendSelectedCheckpoint(selectedCheckpoint);
     });
+
 });
+
+
 
 function sendSelectedCheckpoint(selectedCheckpoint) {
     const xhr = new XMLHttpRequest();
@@ -299,6 +306,16 @@ function sendSelectedCheckpoint(selectedCheckpoint) {
 }
 
 function sendSelectedModel(model) {
+    const calibrationBtn = document.getElementById('calibration-btn');
+    // Show calibration button only if the selected value is 'auto'
+    if (model === 'Auto') {
+        console.log('calibration button enabled');
+        calibrationBtn.style.display = 'inline-block';
+    } else {
+        console.log('calibration button disabled');
+        calibrationBtn.style.display = 'none';
+    }
+
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/set_correction_model", true);
     xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
@@ -384,15 +401,6 @@ function updateDatasetOptions() {
                 trainingSelectElement.appendChild(newOption2);
             });
 
-            // Create a DISABLED option element
-            const newOption3 = document.createElement('option');
-            // Set the value and text content
-            newOption3.value = 'disabled';
-            newOption3.textContent = 'disabled';
-            newOption3.selected = true;
-            // Append the new option to the select element
-            correctionModelSelectElement.appendChild(newOption3);
-
             // Add new options to the select element models
             newOptions.models.forEach(function(option) {
                 // Create a new option element
@@ -472,44 +480,348 @@ function startNewDataset() {
 let eventSource;
 let datasetLoadingSource;
 
-function createPopup(id, message) {
+// Function to create the popup with Yes/No buttons
+function createPopup(id, message, yesCallback, noCallback) {
     const existingPopupBackground = document.getElementById(`${id}-background`);
     if (existingPopupBackground) {
         document.body.removeChild(existingPopupBackground);
     }
 
+    // Create the darkened background
     const popupBackground = document.createElement('div');
     popupBackground.className = 'training_popup-background';
     popupBackground.id = `${id}-background`;
 
+    // Create the popup container
     const popup = document.createElement('div');
     popup.className = 'training_popup';
     popup.id = id;
 
+    // Create the popup content container
     const content = document.createElement('div');
     content.className = 'training_popup-content';
 
+    // Add the message text
     const text = document.createElement('p');
     text.textContent = message;
     content.appendChild(text);
 
-    if (id != 'training-started-popup') {
-        const closeButton = document.createElement('button');
-        closeButton.className = 'training_popup-close-button';
-        closeButton.textContent = 'Continue';
-        closeButton.onclick = () => {
-            const popupBackground = document.getElementById(`${id}-background`);
-            if (popupBackground) {
-                document.body.removeChild(popupBackground);
-            }
-        };
-        content.appendChild(closeButton);
-    }
+    // Add the Yes button
+    const yesButton = document.createElement('button');
+    yesButton.className = 'training_popup-yes-button';
+    yesButton.textContent = 'Yes';
+    yesButton.onclick = () => {
+        document.body.removeChild(popupBackground);
+        if (yesCallback) yesCallback(); // Trigger the Yes callback
+    };
+    content.appendChild(yesButton);
 
+    // Add the No button
+    const noButton = document.createElement('button');
+    noButton.className = 'training_popup-no-button';
+    noButton.textContent = 'No';
+    noButton.onclick = () => {
+        document.body.removeChild(popupBackground);
+        if (noCallback) noCallback(); // Trigger the No callback
+    };
+    content.appendChild(noButton);
+
+    // Append content to the popup and popup to the background
     popup.appendChild(content);
     popupBackground.appendChild(popup);
     document.body.appendChild(popupBackground);
 }
+
+function start_calibration_procedure() {
+    sendSelectedModel('disabled');
+
+    const pingSound = new Audio('static/done-sound.mp3');  // Replace with your audio file path
+
+    // Function to play the sound
+    function playPing() {
+        pingSound.play();
+    }
+
+    // Remove any existing calibration popup if present
+    const existingCalibrationBackground = document.getElementById('calibration-procedure-background');
+    if (existingCalibrationBackground) {
+        document.body.removeChild(existingCalibrationBackground);
+    }
+
+    // Create a darkened background for the calibration procedure
+    const calibrationBackground = document.createElement('div');
+    calibrationBackground.className = 'calibration-background';
+    calibrationBackground.id = 'calibration-procedure-background';
+
+    // Create a popup container
+    const calibrationPopup = document.createElement('div');
+    calibrationPopup.className = 'calibration-popup';
+    calibrationPopup.id = 'calibration-procedure-popup';
+
+    // Create a container for the content (message and buttons)
+    const contentContainer = document.createElement('div');
+    contentContainer.className = 'calibration-content-container';
+
+    // Add the big white text message
+    const message = document.createElement('h1');
+    message.className = 'calibration-message';
+    message.textContent = 'Click start to begin calibration procedure';
+    contentContainer.appendChild(message);
+
+    // Create a container for the buttons
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'calibration-button-container';
+
+    // Create the Start button
+    const startButton = document.createElement('button');
+    startButton.className = 'calibration-start-button';
+    startButton.textContent = 'Start';
+    buttonContainer.appendChild(startButton);
+
+    // Create the Cancel button
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'calibration-cancel-button';
+    cancelButton.textContent = 'Cancel';
+    buttonContainer.appendChild(cancelButton);
+
+    // Append the button container to the content container
+    contentContainer.appendChild(buttonContainer);
+
+    // Append the content container to the calibration popup
+    calibrationPopup.appendChild(contentContainer);
+
+    // Append the popup to the darkened background
+    calibrationBackground.appendChild(calibrationPopup);
+
+    // Add the darkened background and popup to the body
+    document.body.appendChild(calibrationBackground);
+
+    // Event handler for Cancel button
+    cancelButton.onclick = () => {
+        console.log('Calibration canceled');
+        document.body.removeChild(calibrationBackground);
+    };
+
+    // Start the calibration capture when the user clicks the Start button
+    startButton.onclick = () => {
+        // Hide the Start and Cancel buttons
+        startButton.style.display = 'none';
+        cancelButton.style.display = 'none';
+
+        startCalibrationCapture();
+    };
+
+    // Shared variables for progress display
+    let stepProgressDiv;
+    let progressDiv;
+
+    async function startCalibrationCapture() {
+        // Create a div to show step progress
+        stepProgressDiv = document.createElement('div');
+        stepProgressDiv.className = 'calibration-step-progress';
+        contentContainer.appendChild(stepProgressDiv);
+
+        // Create a div to show image capture progress
+        progressDiv = document.createElement('div');
+        progressDiv.className = 'calibration-progress';
+        contentContainer.appendChild(progressDiv);
+
+        let image_count = 100;
+
+        const steps = [
+            {
+                totalImages: image_count,
+                message: 'Look at the camera and DO NOT BLINK...',
+                payload: {
+                    datasetMode: 'new',
+                    datasetName: 'auto',
+                    cameraDirection: 'lookingAtCamera'
+                }
+            },
+            {
+                totalImages: image_count / 2,
+                message: 'Turn your eyes to the left of your screen and DO NOT BLINK.',
+                payload: {
+                    datasetMode: 'existing',
+                    datasetName: 'auto',
+                    cameraDirection: 'awayFromCamera'
+                }
+            },
+            {
+                totalImages: image_count / 2,
+                message: 'Turn your eyes to the right of your screen and DO NOT BLINK.',
+                payload: {
+                    datasetMode: 'existing',
+                    datasetName: 'auto',
+                    cameraDirection: 'awayFromCamera'
+                }
+            }
+        ];
+
+        let currentStepIndex = 0;
+
+        async function proceedToNextStep() {
+            if (currentStepIndex < steps.length) {
+                const step = steps[currentStepIndex];
+
+                // Update the popup message
+                const popupMessage = document.querySelector('.calibration-message');
+                popupMessage.textContent = step.message;
+
+                // Update step progress
+                stepProgressDiv.textContent = `Step ${currentStepIndex + 1} of ${steps.length}`;
+
+                // Show the Start and Cancel buttons
+                startButton.style.display = 'inline-block';
+                cancelButton.style.display = 'inline-block';
+
+                // Update Start button onclick to start capturing images for this step
+                startButton.onclick = async () => {
+                    // Hide the Start and Cancel buttons
+                    startButton.style.display = 'none';
+                    cancelButton.style.display = 'none';
+
+                    await captureImages(step.totalImages, step.payload);
+
+                    currentStepIndex++;
+                    await proceedToNextStep(); // Proceed to next step
+                };
+
+                // Update Cancel button onclick
+                cancelButton.onclick = () => {
+                    console.log('Calibration canceled');
+                    document.body.removeChild(calibrationBackground);
+                };
+            } else {
+                // All steps completed, start retraining model step
+                await startRetrainingModel();
+            }
+        }
+
+        await proceedToNextStep(); // Start the first step
+    }
+
+    // Function to capture images and update progress
+    async function captureImages(totalImages, payload) {
+        const progressDiv = document.querySelector('.calibration-progress');
+
+        for (let i = 0; i < totalImages; i++) {
+            progressDiv.textContent = `Capturing Image ${i + 1}/${totalImages}`;
+            try {
+                const response = await fetch('/backend/capture-images', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log(result.message);
+                } else {
+                    const errorData = await response.json();
+                    console.log(`Failed to capture images: ${errorData.error}`);
+                }
+            } catch (error) {
+                console.error('Error capturing images:', error);
+                alert('Error capturing images.');
+                break; // Exit the loop if there's an error
+            }
+        }
+
+        // Clear the progress text after capturing images
+        progressDiv.textContent = '';
+        playPing();
+    }
+
+    // Function to handle retraining model step
+    async function startRetrainingModel() {
+        // Update the popup message
+        const popupMessage = document.querySelector('.calibration-message');
+        popupMessage.textContent = 'Applying Calibration...';
+    
+        // Clear previous step progress
+        stepProgressDiv.textContent = '';
+        // Show progressDiv
+        progressDiv.innerHTML = 'Progress: 0% <div class="loading-spinner"></div>'; // Add the spinner
+    
+        // Start retraining by making a POST request to the backend
+        try {
+            const startRetrainingResponse = await fetch('/start_retraining', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+    
+            if (!startRetrainingResponse.ok) {
+                const errorData = await startRetrainingResponse.json();
+                console.error('Failed to start retraining:', errorData.message);
+                return;
+            }
+    
+            console.log('Retraining started successfully!');
+    
+            // Now start checking /get_calibration_progress for retraining progress
+            let progress = 0;
+            while (progress < 100) {
+                const progressResponse = await fetch('/get_calibration_progress');
+                if (progressResponse.ok) {
+                    const data = await progressResponse.json();
+                    progress = data.progress; // Assuming the backend returns {progress: <number>}
+                    const calibrationMessage = data.calibration_message; // Assuming backend sends this
+                    progressDiv.textContent = `${calibrationMessage}: ${progress}%`;
+                    
+                    // Append the spinner again
+                    progressDiv.innerHTML = `
+                                            <div style="display: flex; flex-direction: column; align-items: center;">
+                                                <div class="loading-spinner"></div>
+                                                <div>${calibrationMessage}: ${progress}%</div>
+                                            </div>
+                                        `;
+
+                } else {
+                    console.error('Failed to get calibration progress');
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before next check
+            }
+    
+            // Retraining complete
+            progressDiv.textContent = 'Retraining complete!';
+            console.log('Retraining process finished!');
+    
+            // Play the ping sound to indicate completion
+    
+            // Optionally, remove the calibration popup after completion
+            setTimeout(() => {
+                document.body.removeChild(calibrationBackground);
+            }, 2000); // Remove after 2 seconds
+    
+        } catch (error) {
+            console.error('Error during retraining process:', error);
+        }
+    }
+    
+
+}
+
+// Event listener for the calibration button
+document.getElementById('calibration-btn').addEventListener('click', () => {
+    createPopup(
+        'calibration-popup',
+        'Do you want to start the calibration procedure?',
+        start_calibration_procedure, // Call the calibration procedure if Yes is clicked
+        () => {
+            console.log('Calibration canceled');
+        }
+    );
+});
+
+
+
+
+
 
 function startTraining() {
     const modelName = document.getElementById('training-tab-model-name').value;

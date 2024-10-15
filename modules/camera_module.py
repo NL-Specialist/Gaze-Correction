@@ -24,7 +24,7 @@ class CameraModule:
         self.camera = None
         self.device_nr = 1  # 0 or 1 or 2
         self.eyes_processor = Eyes()
-        self.frame_queue = queue.Queue(maxsize=30)
+        self.frame_queue = queue.Queue(maxsize=5)
         self.camera_thread = None
         self.stop_event = threading.Event()
         self.left_eye_frame = None
@@ -119,7 +119,9 @@ class CameraModule:
                 timestamp = time.time()
                 logging.debug(f"Captured frame at timestamp: {timestamp}")
 
-                # frame = cv2.rotate(frame, cv2.ROTATE_180)
+                if self.device_nr == 2:
+                    frame = cv2.rotate(frame, cv2.ROTATE_180)
+                    
                 ret, buffer = cv2.imencode('.jpg', frame)
                 if not ret:
                     logging.error("Failed to encode frame to JPEG")

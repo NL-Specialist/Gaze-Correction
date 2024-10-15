@@ -284,7 +284,7 @@ h1 {
 
 /* Base style for the checkpoint dropdown */
 #correction-select-model-checkpoint {
-    margin-left: 10px;;
+    margin-left: 10px;
     background-color: transparent;
     color: white;
     border-radius: 10px;
@@ -317,6 +317,38 @@ h1 {
     outline: none; /* Remove default outline */
     box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.5); /* Add custom focus shadow */
 }
+
+/* Style for the calibration button */
+#calibration-btn {
+    margin-left: 10px;
+    background: none; /* No background since we're using an image */
+    border: none; /* Remove default border */
+    padding: 0; /* Remove default padding */
+    cursor: pointer; /* Show pointer cursor on hover */
+    border-radius: 50%; /* Circular button shape for consistency */
+    transition: all 0.3s ease; /* Smooth transition for hover effects */
+    box-shadow: 0 3px 5px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+}
+
+/* Hover effect for the calibration button */
+#calibration-btn:hover {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Slightly stronger shadow on hover */
+    transform: scale(1.05); /* Slightly larger on hover */
+}
+
+/* Active state when the button is clicked */
+#calibration-btn:active {
+    transform: scale(0.95); /* Shrink slightly when clicked */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Lighter shadow on click */
+}
+
+/* Optional: Adjust the image inside the button if needed */
+#calibration-btn img {
+    width: 30px; /* Set the size of the image */
+    height: 30px; /* Maintain square size */
+    display: block; /* Ensure image is centered and no extra space */
+}
+
 
 #left-panel {
     float: left;
@@ -1174,6 +1206,38 @@ canvas {
     background-color: #3d5a80;
 }
 
+.training_popup-yes-button,
+.training_popup-no-button {
+    padding: 12px 25px;
+    font-size: 16px;
+    font-weight: bold;
+    color: white;
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin: 0 10px;
+    transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.training_popup-yes-button:hover,
+.training_popup-no-button:hover {
+    background: linear-gradient(135deg, #3d5a80 0%, #1e2a38 100%);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.training_popup-yes-button:focus,
+.training_popup-no-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.4);
+}
+
+.training_popup-yes-button:active,
+.training_popup-no-button:active {
+    background: linear-gradient(135deg, #1e2a38 0%, #001a40 100%);
+    transform: translateY(1px);
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -1208,4 +1272,123 @@ canvas {
     height: 20px;
     animation: spin 1s linear infinite;
     display: inline-block;
+}
+
+
+/* Darkened background for the calibration procedure */
+.calibration-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.9); /* Darken background more */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000; /* Ensure it is above other elements */
+}
+
+/* Popup for the calibration procedure */
+.calibration-popup {
+    background-color: transparent;
+    text-align: center;
+}
+
+
+
+/* Styles for the content container */
+.calibration-content-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Styles for the message */
+.calibration-message {
+    color: white;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* Styles for the button container */
+.calibration-button-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+/* Styles for the buttons */
+.calibration-button-container button {
+    margin: 0 10px;
+    padding: 10px 20px;
+}
+
+/* Styles for progress indicators */
+.calibration-step-progress,
+.calibration-progress {
+    color: white;
+    margin-top: 10px;
+    text-align: center;
+}
+
+/* Start and Cancel buttons */
+.calibration-start-button,
+.calibration-cancel-button {
+    padding: 10px 20px;
+    font-size: 18px;
+    font-weight: bold;
+    color: white;
+    background-color: #3d5a80;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    margin: 10px;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+/* Hover effect for the buttons */
+.calibration-start-button:hover,
+.calibration-cancel-button:hover {
+    background-color: #1e2a38;
+    transform: translateY(-2px);
+}
+
+/* Focus and active states */
+.calibration-start-button:focus,
+.calibration-cancel-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.4);
+}
+
+.calibration-start-button:active,
+.calibration-cancel-button:active {
+    transform: translateY(1px);
+}
+
+
+/* Spinning Loader */
+.loading-spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3); /* Light grey */
+    border-top: 4px solid white; /* White on top */
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin-top: 10px; /* Adjust margin to center it properly */
+    display: inline-block;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Calibration message styling */
+.calibration-message {
+    color: white;
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 18px;
+    line-height: 1.5;
 }

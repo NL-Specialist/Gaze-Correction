@@ -16,6 +16,7 @@ import base64
 from concurrent.futures import ThreadPoolExecutor
 import shutil
 import re
+from threading import Thread
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -43,7 +44,7 @@ if DEBUG:
     print("[DEBUG] DATASETS_PATH: ", DATASETS_PATH)
 
 ACTIVE_DATASET_PATH = ''
-ACTIVE_MODEL = 'disabled'
+ACTIVE_MODEL = 'Auto'
 progress = 0  # Global variable to store training progress
 generator_losses = []  # Global list to store generator loss
 discriminator_losses = []  # Global list to store discriminator loss
@@ -128,7 +129,10 @@ def get_datasets():
     models = [entry for entry in model_entries if os.path.isdir(os.path.join(MODELS_PATH, entry))]
     
     # Create a list of dictionaries for the datasets
-    models_list = [{'value': model, 'text': model} for model in models]
+    models_list = [{'value': 'Auto', 'text': 'Auto'}] + [{'value': 'Auto', 'text': 'disabled'}] + [{'value': model, 'text': model} for model in models]
+
+
+
     
     return jsonify({'datasets': datasets_list, 'models': models_list})
 
@@ -343,18 +347,8 @@ def get_image(epoch):
         'predicted_image_path': predicted_image_path
     })
 
-@app.route('/load_dataset', methods=['POST'])
-def load_dataset():
-    global dataset_loading_progress, files_sent, total_files, model_name, model_path   
-    dataset_loading_progress = 0
-    data = request.json
-    print("[INFO] Content received:", data)
-
-
-    model_name = data.get('model_name', 'Duncan')
-    print(f"[INFO] Model name set to: {model_name}")
-
-    # Clear Existing Training
+def clear_existing_training(model_name):
+    global model_path
     model_path = os.path.join('models', model_name)
     if os.path.exists(model_path):
         # Delete all files and folders inside the directory
@@ -371,26 +365,13 @@ def load_dataset():
     else: 
         os.makedirs(model_path, exist_ok=True)
 
-    dataset_name = data.get('dataset', 'Duncan')
-    print(f"[INFO] Dataset name set to: {dataset_name}")
-
-    folder_path = data.get('datasets', f'datasets/{dataset_name}')
-    print(f"[INFO] Folder path set to: {folder_path}")
-
+def send_files_concurrently(folder_path, dataset_name):
+    global dataset_loading_progress, total_files, files_sent, calibration_progress
     total_files = sum([len(files) for r, d, files in os.walk(folder_path)])
-    print(f"[INFO] Total files to send: {total_files}")
     files_sent = 0
+    dataset_loading_progress = 0
+    print(f"[INFO] Total files to send: {total_files}")
 
-    # Check if the dataset exist in the receiver side
-    response = requests.post("http://192.168.0.58:8021/does_dataset_exist", json={'dataset_path': folder_path})
-    response_data = response.json()
-    if response_data.get("exists") == True:  
-        print(f"[INFO] Done Sending. Dataset: {folder_path} exists in GAN.")
-        dataset_loading_progress = 100
-        files_sent = total_files
-        return jsonify({"message": "Dataset loading started"})
-
-    print(f"[INFO] Dataset: {folder_path} does NOT exist in GAN. Sending files...")
     def send_file(file_path, rel_path):
         global dataset_loading_progress, files_sent, total_files
         with open(file_path, 'rb') as f:
@@ -400,33 +381,150 @@ def load_dataset():
             if response.status_code == 200:
                 files_sent += 1
                 dataset_loading_progress = int((files_sent / total_files) * 100)
-                # print(f"[INFO] Progress: {dataset_loading_progress}% ; Files Sent:{files_sent} ; Total Files: {total_files}")
+                calibration_progress['progress'] = dataset_loading_progress
             else:
                 print(f"[ERROR] Sending {file_path} failed with status code {response.status_code}")
                 print("[ERROR] Response text: ", response.text)
 
-    def send_files_concurrently(folder_path):
-        global dataset_loading_progress
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for root, _, files in os.walk(folder_path):
-                for filename in files:
-                    if filename.endswith(".jpg") or filename.endswith(".png"):  # Add other file extensions if needed
-                        if filename == "full_frame.jpg":
-                            continue
-                        file_path = os.path.join(root, filename)
-                        file_path_normalized = file_path.replace("\\", "/")
-                        rel_path = os.path.relpath(file_path_normalized, folder_path).replace("\\", "/")
-                        executor.submit(send_file, file_path, rel_path)
-                    else:
-                        print(f"[DEBUG] Skipped file: {filename} (not an image)")
-        time.sleep(5)
-        print("[INFO] All files sent successfully.")
-        dataset_loading_progress = 100  # Set progress to 100% after all files are sent
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for root, _, files in os.walk(folder_path):
+            for filename in files:
+                if filename.endswith(".jpg") or filename.endswith(".png"):
+                    if filename == "full_frame.jpg":
+                        continue
+                    file_path = os.path.join(root, filename)
+                    file_path_normalized = file_path.replace("\\", "/")
+                    rel_path = os.path.relpath(file_path_normalized, folder_path).replace("\\", "/")
+                    executor.submit(send_file, file_path, rel_path)
+                else:
+                    print(f"[DEBUG] Skipped file: {filename} (not an image)")
+    time.sleep(5)
+    print("[INFO] All files sent successfully.")
+
+    threading.Thread(target=start_calibration_training, args=(folder_path,)).start()
+    # dataset_loading_progress = 100  # Set progress to 100% after all files are sent
+
+
+
+@app.route('/load_dataset', methods=['POST'])
+def load_dataset():
+    global dataset_loading_progress, model_name   
+    dataset_loading_progress = 0
+    data = request.json
+    print("[INFO] Content received:", data)
+
+    model_name = data.get('model_name', 'Duncan')
+    print(f"[INFO] Model name set to: {model_name}")
+
+    # Clear Existing Training
+    clear_existing_training(model_name)
+
+    dataset_name = data.get('dataset', 'Duncan')
+    print(f"[INFO] Dataset name set to: {dataset_name}")
+
+    folder_path = data.get('datasets', f'datasets/{dataset_name}')
+    print(f"[INFO] Folder path set to: {folder_path}")
+
+    # Check if the dataset exists on the receiver side
+    response = requests.post("http://192.168.0.58:8021/does_dataset_exist", json={'dataset_path': folder_path})
+    response_data = response.json()
+    if response_data.get("exists") == True:  
+        print(f"[INFO] Done Sending. Dataset: {folder_path} exists in GAN.")
+        dataset_loading_progress = 100
+        files_sent = total_files
+        return jsonify({"message": "Dataset loading started"})
+
+    print(f"[INFO] Dataset: {folder_path} does NOT exist in GAN. Sending files...")
 
     # Start the file sending process in a background thread
-    threading.Thread(target=send_files_concurrently, args=(folder_path,)).start()
+    threading.Thread(target=send_files_concurrently, args=(folder_path, dataset_name)).start()
 
     return jsonify({"message": "Dataset loading started"})
+
+# @app.route('/load_dataset', methods=['POST'])
+# def load_dataset():
+#     global dataset_loading_progress, files_sent, total_files, model_name, model_path   
+#     dataset_loading_progress = 0
+#     data = request.json
+#     print("[INFO] Content received:", data)
+
+
+#     model_name = data.get('model_name', 'Duncan')
+#     print(f"[INFO] Model name set to: {model_name}")
+
+#     # Clear Existing Training
+#     model_path = os.path.join('models', model_name)
+#     if os.path.exists(model_path):
+#         # Delete all files and folders inside the directory
+#         print(f"[INFO] Clearing existing training in path: ", model_path)
+#         for filename in os.listdir(model_path):
+#             file_path = os.path.join(model_path, filename)
+#             try:
+#                 if os.path.isfile(file_path) or os.path.islink(file_path):
+#                     os.unlink(file_path)  # Remove the file or link
+#                 elif os.path.isdir(file_path):
+#                     shutil.rmtree(file_path)  # Remove the directory and its contents
+#             except Exception as e:
+#                 print(f'[ERROR] Failed to delete {file_path}. Reason: {e}')
+#     else: 
+#         os.makedirs(model_path, exist_ok=True)
+
+#     dataset_name = data.get('dataset', 'Duncan')
+#     print(f"[INFO] Dataset name set to: {dataset_name}")
+
+#     folder_path = data.get('datasets', f'datasets/{dataset_name}')
+#     print(f"[INFO] Folder path set to: {folder_path}")
+
+#     total_files = sum([len(files) for r, d, files in os.walk(folder_path)])
+#     print(f"[INFO] Total files to send: {total_files}")
+#     files_sent = 0
+
+#     # Check if the dataset exist in the receiver side
+#     response = requests.post("http://192.168.0.58:8021/does_dataset_exist", json={'dataset_path': folder_path})
+#     response_data = response.json()
+#     if response_data.get("exists") == True:  
+#         print(f"[INFO] Done Sending. Dataset: {folder_path} exists in GAN.")
+#         dataset_loading_progress = 100
+#         files_sent = total_files
+#         return jsonify({"message": "Dataset loading started"})
+
+#     print(f"[INFO] Dataset: {folder_path} does NOT exist in GAN. Sending files...")
+#     def send_file(file_path, rel_path):
+#         global dataset_loading_progress, files_sent, total_files
+#         with open(file_path, 'rb') as f:
+#             files = {'file': (os.path.basename(file_path), f)}
+#             data = {'path': rel_path, 'dataset_name': dataset_name}
+#             response = requests.post("http://192.168.0.58:8021/save_dataset_image", files=files, data=data)
+#             if response.status_code == 200:
+#                 files_sent += 1
+#                 dataset_loading_progress = int((files_sent / total_files) * 100)
+#                 # print(f"[INFO] Progress: {dataset_loading_progress}% ; Files Sent:{files_sent} ; Total Files: {total_files}")
+#             else:
+#                 print(f"[ERROR] Sending {file_path} failed with status code {response.status_code}")
+#                 print("[ERROR] Response text: ", response.text)
+
+#     def send_files_concurrently(folder_path):
+#         global dataset_loading_progress
+#         with ThreadPoolExecutor(max_workers=max_workers) as executor:
+#             for root, _, files in os.walk(folder_path):
+#                 for filename in files:
+#                     if filename.endswith(".jpg") or filename.endswith(".png"):  # Add other file extensions if needed
+#                         if filename == "full_frame.jpg":
+#                             continue
+#                         file_path = os.path.join(root, filename)
+#                         file_path_normalized = file_path.replace("\\", "/")
+#                         rel_path = os.path.relpath(file_path_normalized, folder_path).replace("\\", "/")
+#                         executor.submit(send_file, file_path, rel_path)
+#                     else:
+#                         print(f"[DEBUG] Skipped file: {filename} (not an image)")
+#         time.sleep(5)
+#         print("[INFO] All files sent successfully.")
+#         dataset_loading_progress = 100  # Set progress to 100% after all files are sent
+
+#     # Start the file sending process in a background thread
+#     threading.Thread(target=send_files_concurrently, args=(folder_path,)).start()
+
+#     return jsonify({"message": "Dataset loading started"})
 
 @app.route('/dataset_loading_progress_stream')
 def dataset_loading_progress_stream():
@@ -558,6 +656,135 @@ def get_checkpoint_images(timeout=600):
     except KeyError as e:
         print(f"Missing expected key in response: {e}")
         return None, None
+
+# MODEL CALIBRATION
+
+calibration_progress = {'progress': 0, 'calibration_message': ''}
+
+def start_auto_training():
+    global calibration_progress, dataset_loading_progress, model_name, folder_path
+    calibration_progress['calibration_message'] = 'Sending dataset to server'
+      
+    dataset_loading_progress = 0
+    model_name = 'auto'
+    print(f"[INFO] Model name set to: {model_name}")
+
+    clear_existing_training(model_name)
+
+    dataset_name = 'auto'
+    print(f"[INFO] Dataset name set to: {dataset_name}")
+
+    folder_path = f'datasets/{dataset_name}'
+    print(f"[INFO] Folder path set to: {folder_path}")
+
+    response = requests.post("http://192.168.0.58:8021/does_dataset_exist", json={'dataset_path': folder_path})
+    response_data = response.json()
+    if response_data.get("exists") == True:  
+        print(f"[INFO] Done Sending. Dataset: {folder_path} exists in GAN.")
+        start_calibration_training(folder_path)
+        dataset_loading_progress = 100
+    else:
+        print(f"[INFO] Dataset: {folder_path} does NOT exist in GAN. Sending files...")
+    
+        calibration_progress['progress'] = 1
+
+        threading.Thread(target=send_files_concurrently, args=(folder_path, dataset_name)).start()
+        
+
+def start_calibration_training(folder_path):  
+    print(f"[DEBUG] Entering start_calibration_training with folder_path: {folder_path}")  # Verify entry into the function
+    
+    global calibration_progress
+    calibration_progress['progress'] = 0
+    calibration_progress['calibration_message'] = 'Retraining model on calibration dataset.'
+    
+    try:
+        print(f"[INFO] Sending training request to /train with folder_path: {folder_path}")
+        
+        response = requests.post(
+            "http://192.168.0.58:8021/train", 
+            json={
+                'train_model_name': 'auto', 
+                'dataset_path': folder_path, 
+                'epochs': 10, 
+                'learning_rate': 0.0002
+            }
+        )
+        
+        response.raise_for_status()  # This will raise an error for 4xx/5xx responses
+        print(f"[INFO] Training request successful: {response.status_code}")
+    
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] Failed to send request to /train: {e}")
+        return  # Stop execution if the request fails
+
+    progress = 0
+    while progress < 100:
+        try:
+            time.sleep(0.1)  # Simulate some delay or progress polling
+            saved_images, checkpoint_images_path = get_checkpoint_images()
+
+            if saved_images:
+                print(f"[DEBUG] Checkpoint images found: {saved_images}")
+                
+                input_image_path = next((img for img in saved_images if "input" in img), None)
+                input_image_path = os.path.join(checkpoint_images_path, input_image_path)
+                
+                target_image_path = next((img for img in saved_images if "target" in img), None)
+                target_image_path = os.path.join(checkpoint_images_path, target_image_path)
+                
+                predicted_image_path = next((img for img in saved_images if "predicted" in img), None)
+                predicted_image_path = os.path.join(checkpoint_images_path, predicted_image_path)
+                
+                if input_image_path and target_image_path and predicted_image_path:
+                    progress += 10  # Simulate progress update
+                    calibration_progress['progress'] = progress
+                    calibration_progress['calibration_message'] = f"""
+                        Training Progress:
+                        -------------------
+                        Progress:           {progress:.2f}%
+                        Epoch:              1 of 10
+
+                        Image Paths:
+                        ------------
+                        Input Image:        {input_image_path}
+                        Target Image:       {target_image_path}
+                        Predicted Image:    {predicted_image_path}
+
+                        Losses:
+                        -------
+                        Generator Loss:     0.1234
+                        Discriminator Loss: 0.5678
+                    """.encode('utf-8')
+                    
+                    print(f"[INFO] Training progress updated: {progress}%")
+                    print(f"[DEBUG] Image paths - Input: {input_image_path}, Target: {target_image_path}, Predicted: {predicted_image_path}")
+                else:
+                    print(f"[ERROR] Required checkpoint images not found")
+            else:
+                print(f"[ERROR] No checkpoint images found.")
+            
+        except Exception as e:
+            print(f"[ERROR] Exception occurred during training progress: {e}")
+            break
+
+    print("[INFO] Training completed successfully!")  
+
+
+@app.route('/get_calibration_progress', methods=['GET'])
+def get_calibration_progress():
+    return jsonify(calibration_progress)
+
+@app.route('/start_retraining', methods=['POST'])
+def start_retraining():
+    global calibration_progress
+    # Reset progress
+    calibration_progress = {'progress': 0}
+
+    # Start the retraining simulation in a separate thread
+    retraining_thread = Thread(target=start_auto_training)
+    retraining_thread.start()
+    return jsonify({'message': 'Retraining started'}), 200
 
 
 if __name__ == "__main__":

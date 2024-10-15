@@ -88,7 +88,7 @@ class Eyes:
             if classify_gaze:
                 # Determine gaze direction
                 self.gaze_direction = self.gaze_classifier.classify_gaze(frame, show_face_mesh)
-                self.should_correct_gaze = True # = self.gaze_direction == "Gaze Direction: Away"
+                self.should_correct_gaze =  self.gaze_direction == "Gaze Direction: Away"
 
                 cv2.putText(frame, self.gaze_direction, (w // 2 - 100, h // 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
