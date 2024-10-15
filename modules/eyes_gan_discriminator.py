@@ -59,3 +59,26 @@ class EYES_GAN_DISCRIMINATOR:
 
         print(f"Discriminator loss: {total_disc_loss}, Real loss: {real_loss}, Generated loss: {generated_loss}")
         return total_disc_loss
+    
+    def build_discriminator_for_inference(self):
+        """Builds a discriminator for inference with a single input."""
+        initializer = tf.random_normal_initializer(0., 0.02)
+
+        inp = tf.keras.layers.Input(shape=self.input_shape, name='input_image')
+
+        down1 = self.downsample(64, 4, False)(inp)
+        down2 = self.downsample(128, 4)(down1)
+        down3 = self.downsample(256, 4)(down2)
+
+        zero_pad1 = tf.keras.layers.ZeroPadding2D()(down3)
+        conv = tf.keras.layers.Conv2D(512, 4, strides=1, kernel_initializer=initializer, use_bias=False)(zero_pad1)
+        batchnorm1 = tf.keras.layers.BatchNormalization()(conv)
+        leaky_relu = tf.keras.layers.LeakyReLU()(batchnorm1)
+        zero_pad2 = tf.keras.layers.ZeroPadding2D()(leaky_relu)
+        last = tf.keras.layers.Conv2D(1, 4, strides=1, kernel_initializer=initializer)(zero_pad2)
+
+        return tf.keras.Model(inputs=inp, outputs=last)
+    
+    
+
+

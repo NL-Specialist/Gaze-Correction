@@ -73,8 +73,8 @@ async def load_GAN(model_name):
     discriminator_right = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3), gpu_index=device_right)
 
     # Initialize EYES_GAN
-    eyes_gan_left = EYES_GAN('left_model', generator_left, discriminator_left, device_left)
-    eyes_gan_right = EYES_GAN('right_model', generator_right, discriminator_right, device_right)
+    eyes_gan_left = EYES_GAN(model_name + '_left', generator_left, discriminator_left, device_left)
+    eyes_gan_right = EYES_GAN(model_name +'_right', generator_right, discriminator_right, device_right)
     
     return True
 
@@ -325,13 +325,17 @@ class DoesDatasetExistRequest(BaseModel):
 async def does_dataset_exist(request: DoesDatasetExistRequest):
     global dataset_exists
     if os.path.exists(request.dataset_path):
-        print(f'[INFO] Dataset Exists! : {request.dataset_path}')
-        dataset_exists = True
-        return {'exists':dataset_exists}
-    else:
-        print(f'[INFO] Dataset does not exists: {request.dataset_path}')
+        print(f'[INFO] Dataset Exists! Deleting it: {request.dataset_path}')
+        if os.path.isdir(request.dataset_path):
+            shutil.rmtree(request.dataset_path)  # Remove directory and contents
+        else:
+            os.remove(request.dataset_path)  # Remove file
         dataset_exists = False
-        return {'exists':dataset_exists}
+        return {'exists': dataset_exists, 'message': 'Dataset existed and has been deleted'}
+    else:
+        print(f'[INFO] Dataset does not exist: {request.dataset_path}')
+        dataset_exists = False
+        return {'exists': dataset_exists, 'message': 'Dataset does not exist'}
 
 class GetCheckpointImageRequest(BaseModel):
     checkpoint_image_model_name: str
@@ -403,6 +407,80 @@ async def read_image(file: UploadFile):
     np_arr = np.frombuffer(contents, np.uint8)  # Using frombuffer to avoid deprecation warning
     image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
     return image
+
+
+# GAZE CLASSIFICATION
+@app.post("/classify_gaze/")
+async def classify_gaze(left_eye: UploadFile = File(...), right_eye: UploadFile = File(...)):
+    """
+    Generate images using the loaded EYES_GAN model for both eyes.
+    
+    Args:
+        left_eye: Uploaded left eye image file.
+        right_eye: Uploaded right eye image file.
+    
+    Returns:
+        JSON containing the gaze direction.
+    """
+    global discriminator_left, discriminator_right
+
+    # Ensure models are loaded
+    if discriminator_left is None or discriminator_right is None:
+        await load_GAN('Today')
+
+    try:
+        # Read the uploaded left and right eye images
+        left_img = await read_image(left_eye)
+        right_img = await read_image(right_eye)
+        
+        # Check if images are read properly
+        if left_img is None or right_img is None:
+            logging.error("Failed to read one or both images.")
+            return {"error": "Invalid images. Please upload valid eye images."}
+
+        # Preprocess the images
+        left_img = tf.expand_dims(left_img, axis=0)
+        right_img = tf.expand_dims(right_img, axis=0)
+
+        # Perform inference
+        real_or_fake_left = is_real_or_fake_inference(discriminator_left, left_img)
+        real_or_fake_right = is_real_or_fake_inference(discriminator_right, right_img)
+        
+        # Check for valid inference results
+        if real_or_fake_left is None or real_or_fake_right is None:
+            logging.error("Inference returned None for one or both images.")
+            return {"error": "Failed to classify gaze during inference."}
+
+        # Average the results to classify gaze
+        avg = (real_or_fake_left + real_or_fake_right) / 2
+
+        gaze_direction = 'Gaze Direction: Camera' if avg > 0.5 else 'Gaze Direction: Away'
+        
+        return {"gaze_direction": gaze_direction}
+
+    except Exception as e:
+        logging.error(f"Error in classify_gaze: {e}")
+        return {"error": "Failed to classify gaze. Please try again."}
+
+
+
+def is_real_or_fake_inference(discriminator, input_image):
+    # Call the new discriminator that accepts only one input image
+    logits = discriminator([input_image], training=False)
+    
+    # Apply sigmoid to convert logits to probabilities
+    probabilities = tf.sigmoid(logits)
+    
+    # Average the output probabilities
+    avg_probability = tf.reduce_mean(probabilities).numpy()
+    
+    # Print the result
+    if avg_probability > 0.5:
+        print("The image is classified as REAL: ", avg_probability)
+    else:
+        print("The image is classified as FAKE: ", avg_probability)
+    
+    return avg_probability
 
 
 if __name__ == "__main__":
