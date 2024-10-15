@@ -22,7 +22,7 @@ class CameraModule:
     def __init__(self):
         self.camera_on = False
         self.camera = None
-        self.device_nr = 2  # 0 or 1 or 2
+        self.device_nr = 1  # 0 or 1 or 2
         self.eyes_processor = Eyes()
         self.frame_queue = queue.Queue(maxsize=30)
         self.camera_thread = None
@@ -119,7 +119,7 @@ class CameraModule:
                 timestamp = time.time()
                 logging.debug(f"Captured frame at timestamp: {timestamp}")
 
-                frame = cv2.rotate(frame, cv2.ROTATE_180)
+                # frame = cv2.rotate(frame, cv2.ROTATE_180)
                 ret, buffer = cv2.imencode('.jpg', frame)
                 if not ret:
                     logging.error("Failed to encode frame to JPEG")
@@ -255,7 +255,7 @@ class CameraModule:
             return buffer.tobytes()
         logging.error("Failed to encode processed frame to JPEG")
         return None
-        
+
     def _process_live_video_right_frame_async(self, frame):
         # Check if the active model is enabled and gaze correction is required
         if not self.active_model == 'disabled' and self.eyes_processor.should_correct_gaze:
@@ -293,7 +293,7 @@ class CameraModule:
         # Start a new thread to generate the eye images without blocking
         threading.Thread(target=self._generate_eye_images, args=(frame,), daemon=True).start()
 
-    def _generate_eye_images(self, frame):
+    def _generate_eye_images(self, frame): 
         try:
             start_time = time.time()
             print("[INFO] Starting image generation for both eyes...")
@@ -318,15 +318,22 @@ class CameraModule:
             if os.path.exists(left_eye_image_path) and os.path.exists(right_eye_image_path):
                 print("[INFO] Sending both eye images to http://192.168.0.58:8021/generate_image/")
                 
-                with open(left_eye_image_path, "rb") as left_eye_img_file, open(right_eye_image_path, "rb") as right_eye_img_file:
-                    files = {
-                        "left_eye": left_eye_img_file,
-                        "right_eye": right_eye_img_file
-                    }
-                    response_start_time = time.time()
-                    corrected_eye_response = requests.post("http://192.168.0.58:8021/generate_image/", files=files)
-                    response_time = time.time() - response_start_time
-                    print(f"[INFO] Response received for both eyes in {response_time:.2f} seconds.")
+                # Opening the files outside the with block to avoid early closure
+                left_eye_img_file = open(left_eye_image_path, "rb")
+                right_eye_img_file = open(right_eye_image_path, "rb")
+                
+                files = {
+                    "left_eye": left_eye_img_file,
+                    "right_eye": right_eye_img_file
+                }
+                response_start_time = time.time()
+                corrected_eye_response = requests.post("http://192.168.0.58:8021/generate_image/", files=files)
+                response_time = time.time() - response_start_time
+                print(f"[INFO] Response received for both eyes in {response_time:.2f} seconds.")
+
+                # Close the files after the request
+                left_eye_img_file.close()
+                right_eye_img_file.close()
 
                 if corrected_eye_response.status_code == 200:
                     # Parse the JSON response to get the file paths
@@ -356,6 +363,7 @@ class CameraModule:
             with self.lock:
                 self.thread_running = False
             return None, None
+
 
 
 
