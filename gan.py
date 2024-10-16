@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse
+from fastapi import BackgroundTasks
 from pydantic import BaseModel
 from modules.eyes_gan_dataset import EYES_GAN_DATASET
 from modules.eyes_gan_generator import EYES_GAN_GENERATOR
@@ -255,8 +256,8 @@ class TrainRequest(BaseModel):
 
 @app.post("/train/")
 async def train(request: TrainRequest):
-    global eyes_gan_left, eyes_gan_right, model_name, epoch_count, ACTIVE_DATASET_DIRECTORY, dataset_exists
-    
+    global eyes_gan_left, eyes_gan_right, model_name, epoch_count, ACTIVE_DATASET_DIRECTORY, EPOCHS, dataset_exists
+
     model_name = request.train_model_name
     await load_GAN(model_name)
     
@@ -264,36 +265,45 @@ async def train(request: TrainRequest):
         raise HTTPException(status_code=400, detail="Model not loaded. Call /load_model/ first.")
 
     ACTIVE_DATASET_DIRECTORY = request.dataset_path
-    
+
     if not dataset_exists:
         logging.debug(f"Splitting dataset at: {ACTIVE_DATASET_DIRECTORY}")
         split_folders(ACTIVE_DATASET_DIRECTORY)
+        logging.debug(f"Loading images...")
+        await asyncio.sleep(20)
         logging.debug(f"Dataset split successfully!")
-    
+
     eyes_gan_dataset = EYES_GAN_DATASET(dataset_path=ACTIVE_DATASET_DIRECTORY, debug=True)
-    
+
     train_dataset_left, test_dataset_left, val_dataset_left = eyes_gan_dataset.prepare_datasets(eye_type='left')
     train_dataset_right, test_dataset_right, val_dataset_right = eyes_gan_dataset.prepare_datasets(eye_type='right')
-    
-    async def train_model_left():
-        await eyes_gan_left.fit(model_name+'_left', train_dataset_left, test_dataset_left, epochs=request.epochs, learning_rate=request.learning_rate)
-        
-    async def train_model_right():
-        await eyes_gan_right.fit(model_name+'_right', train_dataset_right, test_dataset_right, epochs=request.epochs, learning_rate=request.learning_rate)
 
-    # Function to run async code in a thread
-    def run_async_train_model_left():
-        asyncio.run(train_model_left())
-    
-    def run_async_train_model_right():
-        asyncio.run(train_model_right())
+    EPOCHS = request.epochs
 
-    # Run the training processes in separate threads
-    executor.submit(run_async_train_model_left)
-    executor.submit(run_async_train_model_right)
+    def train_model_left():
+        eyes_gan_left.fit(
+            model_name + '_left', 
+            train_dataset_left, 
+            test_dataset_left, 
+            epochs=EPOCHS, 
+            learning_rate=request.learning_rate
+        )
 
-    # Return immediately without waiting for threads to finish
+    def train_model_right():
+        eyes_gan_right.fit(
+            model_name + '_right', 
+            train_dataset_right, 
+            test_dataset_right, 
+            epochs=EPOCHS, 
+            learning_rate=request.learning_rate
+        )
+
+    # Run the training tasks concurrently
+    threading.Thread(target=train_model_left).start()
+    threading.Thread(target=train_model_right).start()
+    epoch_count = 0
     return {"status": "TRAINING_STARTED"}
+
 
 def generate_initial_test_images(test_dataset):
     """
@@ -316,7 +326,7 @@ def generate_initial_test_images(test_dataset):
     for i, (inp, tar) in enumerate(test_dataset.take(5)):
         save_image(inp[0], f'initial_images/input/image_{i}.jpg')
         save_image(tar[0], f'initial_images/target/image_{i}.jpg')
-        eyes_gan.generate_images(inp[0], tar[0], f'initial_images/generated/', step=i+1)
+        eyes_gan_left.generate_images(inp[0], tar[0], f'initial_images/generated/', step=i+1)
 
 class DoesDatasetExistRequest(BaseModel):
     dataset_path: str
@@ -324,14 +334,30 @@ class DoesDatasetExistRequest(BaseModel):
 @app.post("/does_dataset_exist/")
 async def does_dataset_exist(request: DoesDatasetExistRequest):
     global dataset_exists
+    dataset_name = os.path.basename(request.dataset_path)  # Extract the dataset name from the path
+    left_folder = os.path.join("models", dataset_name + "_left")
+    right_folder = os.path.join("models", dataset_name + "_right")
+
     if os.path.exists(request.dataset_path):
         print(f'[INFO] Dataset Exists! Deleting it: {request.dataset_path}')
+        
+        # Delete the dataset file or directory
         if os.path.isdir(request.dataset_path):
             shutil.rmtree(request.dataset_path)  # Remove directory and contents
         else:
             os.remove(request.dataset_path)  # Remove file
+
+        # Delete the corresponding left and right folders
+        if os.path.exists(left_folder):
+            print(f'[INFO] Deleting left folder: {left_folder}')
+            shutil.rmtree(left_folder)
+
+        if os.path.exists(right_folder):
+            print(f'[INFO] Deleting right folder: {right_folder}')
+            shutil.rmtree(right_folder)
+
         dataset_exists = False
-        return {'exists': dataset_exists, 'message': 'Dataset existed and has been deleted'}
+        return {'exists': dataset_exists, 'message': 'Dataset and related folders have been deleted'}
     else:
         print(f'[INFO] Dataset does not exist: {request.dataset_path}')
         dataset_exists = False
@@ -342,10 +368,12 @@ class GetCheckpointImageRequest(BaseModel):
 
 @app.post("/get_checkpoint_image/")
 async def get_checkpoint_image(request: GetCheckpointImageRequest):
-    global epoch_count, prev_progress, eyes_gan
+    global epoch_count, prev_progress, eyes_gan_left
     
     base_path = os.path.join("models", request.checkpoint_image_model_name +'_left', "image_checkpoints")
-    print(f"My epoch count:  {epoch_count} at base path: {base_path}")
+    print(f"INFO: Starting get_checkpoint_image function")
+    print(f"My epoch count: {epoch_count}, base path: {base_path}")
+    
     patterns = [
         f"image_at_epoch_{epoch_count}_step_*.png",
         f"image_input_at_epoch_{epoch_count}_step_*.png",
@@ -356,32 +384,40 @@ async def get_checkpoint_image(request: GetCheckpointImageRequest):
     max_retries = 200
     retries = max_retries
     progress = 0
-    print('DEBUG: Trying checkpoints...')
-    while retries > 0 and progress < 100:
+    print('DEBUG: Trying checkpoints with max retries:', max_retries)
+    
+    while retries > 0 and progress < 100 and epoch_count+1<EPOCHS:
         try:
             matched_files = []
             for pattern in patterns:
+                print(f"DEBUG: Looking for files with pattern: {pattern}")
                 matched_files.extend(glob.glob(os.path.join(base_path, pattern)))
 
             if matched_files:
+                print(f"DEBUG: Found matched files: {matched_files}")
                 
                 images_content = {}
-                progress = eyes_gan.progress[epoch_count]
+                progress = eyes_gan_left.progress[epoch_count]
+                print(f"DEBUG: Current progress: {progress}, Previous progress: {prev_progress}")
+                
                 if prev_progress == progress:
+                    print(f"DEBUG: Progress has not changed, retrying... (retries left: {retries})")
                     retries = max_retries  # Reset the retries counter
                     continue  # Start the loop again
 
                 prev_progress = progress  # Update the previous progress
-                gen_loss = eyes_gan.gen_loss[epoch_count]
-                disc_loss = eyes_gan.disc_loss[epoch_count]
+                gen_loss = eyes_gan_left.gen_loss[epoch_count]
+                disc_loss = eyes_gan_left.disc_loss[epoch_count]
+                print(f"DEBUG: Generator Loss: {gen_loss}, Discriminator Loss: {disc_loss}")
 
                 for file_path in matched_files:
+                    print(f"DEBUG: Processing file: {file_path}")
                     with open(file_path, "rb") as image_file:
                         image_content = base64.b64encode(image_file.read()).decode('utf-8')
                     images_content[os.path.basename(file_path)] = image_content
 
                 epoch_count += 1
-                print(f'DEBUG: Sent Checkpoint Image. Content: {images_content}')
+                print(f'DEBUG: Sent Checkpoint Image for epoch {epoch_count}, progress {progress}')
                 return {
                     "images": images_content,
                     "progress": int(progress),
@@ -389,16 +425,25 @@ async def get_checkpoint_image(request: GetCheckpointImageRequest):
                     "generator_loss": str(gen_loss.numpy()),
                     "discriminator_loss": str(disc_loss.numpy())
                 }
+                
         except Exception as e:
-            # print('ERROR: Get checkpoints :', e)
+            print(f"ERROR: Exception occurred: {e}")
             await asyncio.sleep(1)
             continue
 
-        # print('ERROR: Get checkpoints retrying in 5 seconds...')
+        print(f'WARN: Retrying in 1 second... (retries left: {retries})')
         await asyncio.sleep(1)
         retries -= 1
 
+        return {
+            "images": '',
+            "progress": int(100),
+            "epoch_count": EPOCHS,
+            "generator_loss": 0,
+            "discriminator_loss": 0
+            }
     return {"error": "File not found or error occurred after max retries"}
+
     
 
 async def read_image(file: UploadFile):

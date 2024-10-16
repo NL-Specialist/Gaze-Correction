@@ -139,10 +139,7 @@ class EYES_GAN:
                     imageio.imwrite(save_path, img)
                     print(f"Image saved to {save_path}")
 
-    async def fit(self, model_name, train_ds, test_ds, epochs, learning_rate, checkpoint_interval=1000):
-        return await asyncio.to_thread(self._run_fit, model_name, train_ds, test_ds, epochs, learning_rate, checkpoint_interval)
-
-    def _run_fit(self, model_name, train_ds, test_ds, epochs, learning_rate, checkpoint_interval=1000):
+    def fit(self, model_name, train_ds, test_ds, epochs, learning_rate, checkpoint_interval=1000):
         with tf.device(self.device):
             self.model_name = model_name
             self.model_save_dir = os.path.join('models', self.model_name)
@@ -204,7 +201,7 @@ class EYES_GAN:
 
                 self.gen_loss.append(gen_total_loss)
                 self.disc_loss.append(disc_total_loss)
-                progress_percentage = ((epoch) / epochs) * 100
+                progress_percentage = ((epoch+1) / epochs) * 100
                 self.progress.append(progress_percentage)
 
                 print("[FIT] PROGRESS: ", progress_percentage)

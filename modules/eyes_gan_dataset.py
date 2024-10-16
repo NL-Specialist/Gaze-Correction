@@ -136,8 +136,6 @@ class EYES_GAN_DATASET:
             input_dir_path = os.path.join(input_base_path, dir_name)
             target_dir_path = os.path.join(target_base_path, dir_name)
             if not os.path.exists(target_dir_path):
-                if self.DEBUG:
-                    print(f"Target directory does not exist: {target_dir_path}")
                 continue
 
             # Collect images for the specified eye type
