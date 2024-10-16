@@ -30,7 +30,7 @@ class GazeClassifier:
         self.drawing_spec = self.mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
         
         # Threshold values
-        self.PITCH_THRESHOLD = 150  # degrees
+        self.PITCH_THRESHOLD = 147  # degrees
         self.YAW_THRESHOLD = 5  # degrees
 
     def calculate_angle(self, vector1, vector2):
