@@ -284,7 +284,7 @@ h1 {
 
 /* Base style for the checkpoint dropdown */
 #correction-select-model-checkpoint {
-    margin-left: 10px;;
+    margin-left: 10px;
     background-color: transparent;
     color: white;
     border-radius: 10px;
@@ -318,6 +318,38 @@ h1 {
     box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.5); /* Add custom focus shadow */
 }
 
+/* Style for the calibration button */
+#calibration-btn {
+    margin-left: 10px;
+    background: none; /* No background since we're using an image */
+    border: none; /* Remove default border */
+    padding: 0; /* Remove default padding */
+    cursor: pointer; /* Show pointer cursor on hover */
+    border-radius: 50%; /* Circular button shape for consistency */
+    transition: all 0.3s ease; /* Smooth transition for hover effects */
+    box-shadow: 0 3px 5px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+}
+
+/* Hover effect for the calibration button */
+#calibration-btn:hover {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Slightly stronger shadow on hover */
+    transform: scale(1.05); /* Slightly larger on hover */
+}
+
+/* Active state when the button is clicked */
+#calibration-btn:active {
+    transform: scale(0.95); /* Shrink slightly when clicked */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Lighter shadow on click */
+}
+
+/* Optional: Adjust the image inside the button if needed */
+#calibration-btn img {
+    width: 30px; /* Set the size of the image */
+    height: 30px; /* Maintain square size */
+    display: block; /* Ensure image is centered and no extra space */
+}
+
+
 #left-panel {
     float: left;
     width: 48%;
@@ -330,20 +362,11 @@ h1 {
     align-items: center;
     animation: slideInLeft 1.5s forwards;
 }
-/* 
+ 
 #live-video-left {
-    margin-top: 10vh;
-} */
-
-@keyframes slideInLeft {
-    from {
-        opacity: 0;
-        transform: translateX(-100%);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(0);
-    }
+    /* margin-top: 10vh; */
+    height: 100vh;
+    width: 100vw;
 }
 
 #right-panel {
@@ -358,10 +381,27 @@ h1 {
     align-items: center;
     animation: slideInRight 1.5s forwards;
 }
-/* 
+
 #live-video-right {
-    margin-top: 10vh; 
-} */
+    /* margin-top: 10vh;  */
+    height: 100vh;
+    width: 100vw;
+} 
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+
+
+
 
 @keyframes slideInRight {
     from {
@@ -382,16 +422,14 @@ h1 {
     font-family: 'Montserrat', sans-serif; /* Modern font */
     font-size: 13px; /* Adjust font size */
     color: #ffffff; /* Text color */
-    padding: 20px; /* Padding for spacing */
-    border: none; /* Remove border */
-    border-radius: 50%; /* Fully rounded corners for circle */
+    background-color: transparent;
     text-align: center; /* Center the text */
-    width: 50px; /* Fixed width */
-    height: 50px; /* Fixed height */
+    width: 60px; /* Fixed width */
+    height: 60px; /* Fixed height */
     margin-left: auto; /* Center horizontally */
     margin-right: auto; /* Center horizontally */
     /* margin-top: -10px; */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Slight shadow */
+    /* box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); Slight shadow */
     transition: transform 0.3s ease, background-color 0.3s ease; /* Smooth transition for hover effects */
     cursor: pointer; /* Pointer cursor on hover */
     animation: slideInUp 2s forwards;
@@ -410,29 +448,35 @@ h1 {
 
 /* Hover effects */
 #statusMessage:hover {
-    transform: scale(1.05); /* Slightly enlarge on hover */
+    font-size: 1.5em; /* Increase font size on hover */
+    transition: font-size 0.3s ease; /* Smooth transition */
 }
 
 /* Click effects */
 #statusMessage:active {
-    transform: scale(0.95); /* Slightly scale down on click */
+    font-size: 0.95em; /* Slightly decrease font size on click */
 }
+
 
 /* Additional styles for different statuses */
 #statusMessage.success {
-    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%); /* Green gradient for success */
+    color: green;
+    /* background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%); Green gradient for success */
 }
 
 #statusMessage.error {
-    background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%); /* Red gradient for error */
+    color: red;
+    /* background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%); Red gradient for error */
 }
 
 #statusMessage.info {
-    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); /* Blue gradient for info */
+    color: white;
+    /* background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); Blue gradient for info */
 }
 
 #statusMessage.disabled {
-    background: linear-gradient(135deg, #bdc3c7 0%, #2c3e50 100%); /* Grey gradient for disabled */
+    color: gray;
+    /* background: linear-gradient(135deg, #bdc3c7 0%, #2c3e50 100%); Grey gradient for disabled */
     cursor: not-allowed; /* Not-allowed cursor for disabled */
     box-shadow: none; /* Remove shadow for disabled */
     pointer-events: none; /* Disable pointer events */
@@ -1162,6 +1206,38 @@ canvas {
     background-color: #3d5a80;
 }
 
+.training_popup-yes-button,
+.training_popup-no-button {
+    padding: 12px 25px;
+    font-size: 16px;
+    font-weight: bold;
+    color: white;
+    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin: 0 10px;
+    transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.training_popup-yes-button:hover,
+.training_popup-no-button:hover {
+    background: linear-gradient(135deg, #3d5a80 0%, #1e2a38 100%);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.training_popup-yes-button:focus,
+.training_popup-no-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.4);
+}
+
+.training_popup-yes-button:active,
+.training_popup-no-button:active {
+    background: linear-gradient(135deg, #1e2a38 0%, #001a40 100%);
+    transform: translateY(1px);
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -1183,3 +1259,137 @@ canvas {
 }
 
 
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-icon {
+    border: 4px solid rgba(255, 255, 255, 0.2);  /* Light grey */
+    border-top: 4px solid white;                 /* White */
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+}
+
+
+/* Darkened background for the calibration procedure */
+.calibration-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.9); /* Darken background more */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000; /* Ensure it is above other elements */
+}
+
+/* Popup for the calibration procedure */
+.calibration-popup {
+    background-color: transparent;
+    text-align: center;
+}
+
+
+
+/* Styles for the content container */
+.calibration-content-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Styles for the message */
+.calibration-message {
+    color: white;
+    text-align: center;
+    margin-bottom: 8%;
+}
+
+/* Styles for the button container */
+.calibration-button-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+/* Styles for the buttons */
+.calibration-button-container button {
+    margin: 0 10px;
+    padding: 10px 20px;
+}
+
+/* Styles for progress indicators */
+.calibration-step-progress,
+.calibration-progress {
+    color: white;
+    margin-top: 10px;
+    text-align: center;
+}
+
+/* Start and Cancel buttons */
+.calibration-start-button,
+.calibration-cancel-button {
+    padding: 10px 20px;
+    font-size: 18px;
+    font-weight: bold;
+    color: white;
+    background-color: #3d5a80;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    margin: 10px;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+/* Hover effect for the buttons */
+.calibration-start-button:hover,
+.calibration-cancel-button:hover {
+    background-color: #1e2a38;
+    transform: translateY(-2px);
+}
+
+/* Focus and active states */
+.calibration-start-button:focus,
+.calibration-cancel-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(61, 90, 128, 0.4);
+}
+
+.calibration-start-button:active,
+.calibration-cancel-button:active {
+    transform: translateY(1px);
+}
+
+
+/* Spinning Loader */
+.loading-spinner {
+    margin-bottom: 5%;
+    border: 4px solid rgba(255, 255, 255, 0.3); /* Light grey */
+    border-top: 4px solid white; /* White on top */
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin-top: 10px; /* Adjust margin to center it properly */
+    display: inline-block;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Calibration message styling */
+.calibration-message {
+    color: white;
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 18px;
+    line-height: 1.5;
+}

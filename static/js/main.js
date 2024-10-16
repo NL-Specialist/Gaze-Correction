@@ -247,7 +247,16 @@ function toggleDatasetMode() {
     }
 }
 
+const correctionSelectModel = document.getElementById('correction-select-model');
+const checkpointDropdown = document.getElementById('correction-select-model-checkpoint');
+
+// Function to toggle the correction select dropdown based on cameraOn value
+function toggleCorrectionSelectModel() {
+    correctionSelectModel.disabled = !cameraOn;
+}
+
 document.addEventListener('DOMContentLoaded', (event) => {
+
     document.getElementById('correction-select-model').addEventListener('change', function () {
         const selectedModel = this.value;
         const checkpointDropdown = document.getElementById('correction-select-model-checkpoint');
@@ -260,15 +269,21 @@ document.addEventListener('DOMContentLoaded', (event) => {
             checkpointDropdown.style.display = "inline-block";
         }
 
+
         sendSelectedModel(selectedModel);
     });
+
+    sendSelectedModel('Auto');
 
     document.getElementById('correction-select-model-checkpoint').addEventListener('change', function () {
         const selectedCheckpoint = this.value;
 
         sendSelectedCheckpoint(selectedCheckpoint);
     });
+
 });
+
+
 
 function sendSelectedCheckpoint(selectedCheckpoint) {
     const xhr = new XMLHttpRequest();
@@ -291,6 +306,16 @@ function sendSelectedCheckpoint(selectedCheckpoint) {
 }
 
 function sendSelectedModel(model) {
+    const calibrationBtn = document.getElementById('calibration-btn');
+    // Show calibration button only if the selected value is 'auto'
+    if (model === 'Auto') {
+        console.log('calibration button enabled');
+        calibrationBtn.style.display = 'inline-block';
+    } else {
+        console.log('calibration button disabled');
+        calibrationBtn.style.display = 'none';
+    }
+
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/set_correction_model", true);
     xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
@@ -376,15 +401,6 @@ function updateDatasetOptions() {
                 trainingSelectElement.appendChild(newOption2);
             });
 
-            // Create a DISABLED option element
-            const newOption3 = document.createElement('option');
-            // Set the value and text content
-            newOption3.value = 'disabled';
-            newOption3.textContent = 'disabled';
-            newOption3.selected = true;
-            // Append the new option to the select element
-            correctionModelSelectElement.appendChild(newOption3);
-
             // Add new options to the select element models
             newOptions.models.forEach(function(option) {
                 // Create a new option element
@@ -464,44 +480,376 @@ function startNewDataset() {
 let eventSource;
 let datasetLoadingSource;
 
-function createPopup(id, message) {
+// Function to create the popup with Yes/No buttons
+function createPopup(id, message, yesCallback, noCallback) {
     const existingPopupBackground = document.getElementById(`${id}-background`);
     if (existingPopupBackground) {
         document.body.removeChild(existingPopupBackground);
     }
 
+    // Create the darkened background
     const popupBackground = document.createElement('div');
     popupBackground.className = 'training_popup-background';
     popupBackground.id = `${id}-background`;
 
+    // Create the popup container
     const popup = document.createElement('div');
     popup.className = 'training_popup';
     popup.id = id;
 
+    // Create the popup content container
     const content = document.createElement('div');
     content.className = 'training_popup-content';
 
+    // Add the message text
     const text = document.createElement('p');
     text.textContent = message;
     content.appendChild(text);
 
-    if (id != 'training-started-popup') {
-        const closeButton = document.createElement('button');
-        closeButton.className = 'training_popup-close-button';
-        closeButton.textContent = 'Continue';
-        closeButton.onclick = () => {
-            const popupBackground = document.getElementById(`${id}-background`);
-            if (popupBackground) {
-                document.body.removeChild(popupBackground);
-            }
-        };
-        content.appendChild(closeButton);
-    }
+    // Add the Yes button
+    const yesButton = document.createElement('button');
+    yesButton.className = 'training_popup-yes-button';
+    yesButton.textContent = 'Yes';
+    yesButton.onclick = () => {
+        document.body.removeChild(popupBackground);
+        if (yesCallback) yesCallback(); // Trigger the Yes callback
+    };
+    content.appendChild(yesButton);
 
+    // Add the No button
+    const noButton = document.createElement('button');
+    noButton.className = 'training_popup-no-button';
+    noButton.textContent = 'No';
+    noButton.onclick = () => {
+        document.body.removeChild(popupBackground);
+        if (noCallback) noCallback(); // Trigger the No callback
+    };
+    content.appendChild(noButton);
+
+    // Append content to the popup and popup to the background
     popup.appendChild(content);
     popupBackground.appendChild(popup);
     document.body.appendChild(popupBackground);
 }
+
+function deleteAutoDataset() {
+    fetch('/delete_auto_dataset', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ dataset_name: 'Auto' })  // Add body content if required
+    })
+    .then(response => {
+        if (response.ok) {
+            console.log('[INFO] Dataset deletion request successful.');
+            return response.json();
+        } else {
+            throw new Error('Dataset deletion request failed.');
+        }
+    })
+    .then(data => {
+        console.log(data.message);
+    })
+    .catch(error => {
+        console.error('[ERROR] ' + error.message);
+    });
+}
+
+
+
+function start_calibration_procedure() {
+    sendSelectedModel('disabled');
+
+    const pingSound = new Audio('static/done-sound.mp3');  // Replace with your audio file path
+
+    // Function to play the sound
+    function playPing() {
+        pingSound.play();
+    }
+
+    // Remove any existing calibration popup if present
+    const existingCalibrationBackground = document.getElementById('calibration-procedure-background');
+    if (existingCalibrationBackground) {
+        document.body.removeChild(existingCalibrationBackground);
+    }
+
+    // Create a darkened background for the calibration procedure
+    const calibrationBackground = document.createElement('div');
+    calibrationBackground.className = 'calibration-background';
+    calibrationBackground.id = 'calibration-procedure-background';
+
+    // Create a popup container
+    const calibrationPopup = document.createElement('div');
+    calibrationPopup.className = 'calibration-popup';
+    calibrationPopup.id = 'calibration-procedure-popup';
+
+    // Create a container for the content (message and buttons)
+    const contentContainer = document.createElement('div');
+    contentContainer.className = 'calibration-content-container';
+
+    // Add the big white text message
+    const message = document.createElement('h1');
+    message.className = 'calibration-message';
+    message.textContent = 'Click start to begin calibration procedure';
+    contentContainer.appendChild(message);
+
+    // Create a container for the buttons
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'calibration-button-container';
+
+    // Create the Start button
+    const startButton = document.createElement('button');
+    startButton.className = 'calibration-start-button';
+    startButton.textContent = 'Start';
+    buttonContainer.appendChild(startButton);
+
+    // Create the Cancel button
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'calibration-cancel-button';
+    cancelButton.textContent = 'Cancel';
+    buttonContainer.appendChild(cancelButton);
+
+    // Append the button container to the content container
+    contentContainer.appendChild(buttonContainer);
+
+    // Append the content container to the calibration popup
+    calibrationPopup.appendChild(contentContainer);
+
+    // Append the popup to the darkened background
+    calibrationBackground.appendChild(calibrationPopup);
+
+    // Add the darkened background and popup to the body
+    document.body.appendChild(calibrationBackground);
+
+    // Event handler for Cancel button
+    cancelButton.onclick = () => {
+        console.log('Calibration canceled');
+        document.body.removeChild(calibrationBackground);
+    };
+
+    // Start the calibration capture when the user clicks the Start button
+    startButton.onclick = () => {
+        // Hide the Start and Cancel buttons
+        startButton.style.display = 'none';
+        cancelButton.style.display = 'none';
+
+        startCalibrationCapture();
+    };
+
+    // Shared variables for progress display
+    let stepProgressDiv;
+    let progressDiv;
+
+    async function startCalibrationCapture() {
+        deleteAutoDataset();
+
+        // Create a div to show step progress
+        stepProgressDiv = document.createElement('div');
+        stepProgressDiv.className = 'calibration-step-progress';
+        contentContainer.appendChild(stepProgressDiv);
+
+        // Create a div to show image capture progress
+        progressDiv = document.createElement('div');
+        progressDiv.className = 'calibration-progress';
+        contentContainer.appendChild(progressDiv);
+
+        let image_count = 200;
+
+        const steps = [
+            {
+                totalImages: image_count,
+                message: 'Look at the camera and DO NOT BLINK...',
+                payload: {
+                    datasetMode: 'new',
+                    datasetName: 'Auto',
+                    cameraDirection: 'lookingAtCamera'
+                }
+            },
+            {
+                totalImages: image_count / 2,
+                message: 'Turn your eyes to the left of your screen and DO NOT BLINK.',
+                payload: {
+                    datasetMode: 'existing',
+                    datasetName: 'Auto',
+                    cameraDirection: 'awayFromCamera'
+                }
+            },
+            {
+                totalImages: image_count / 2,
+                message: 'Turn your eyes to the right of your screen and DO NOT BLINK.',
+                payload: {
+                    datasetMode: 'existing',
+                    datasetName: 'Auto',
+                    cameraDirection: 'awayFromCamera'
+                }
+            }
+        ];
+
+        let currentStepIndex = 0;
+
+        async function proceedToNextStep() {
+            playPing();
+            const popupMessage = document.querySelector('.calibration-message');
+            if (currentStepIndex < steps.length) {
+                const step = steps[currentStepIndex];
+
+                // Update the popup message
+                popupMessage.textContent = step.message;
+
+                // Update step progress
+                stepProgressDiv.textContent = `Step ${currentStepIndex + 1} of ${steps.length}`;
+
+                // Show the Start and Cancel buttons
+                startButton.style.display = 'inline-block';
+                cancelButton.style.display = 'inline-block';
+
+                // Update Start button onclick to start capturing images for this step
+                startButton.onclick = async () => {
+                    // Hide the Start and Cancel buttons
+                    startButton.style.display = 'none';
+                    cancelButton.style.display = 'none';
+
+                    await captureImages(step.totalImages, step.payload);
+
+                    currentStepIndex++;
+                    await proceedToNextStep(); // Proceed to next step
+                };
+
+                // Update Cancel button onclick
+                cancelButton.onclick = () => {
+                    console.log('Calibration canceled');
+                    document.body.removeChild(calibrationBackground);
+                };
+            } else {
+                // All steps completed, start retraining model step
+                await startRetrainingModel();
+            }
+        }
+
+        await proceedToNextStep(); // Start the first step
+    }
+
+    // Function to capture images and update progress
+    async function captureImages(totalImages, payload) {
+        const progressDiv = document.querySelector('.calibration-progress');
+
+        for (let i = 0; i < totalImages; i++) {
+            progressDiv.textContent = `Capturing Image ${i + 1}/${totalImages}`;
+            try {
+                const response = await fetch('/backend/capture-images', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log(result.message);
+                } else {
+                    const errorData = await response.json();
+                    console.log(`Failed to capture images: ${errorData.error}`);
+                }
+            } catch (error) {
+                console.error('Error capturing images:', error);
+                alert('Error capturing images.');
+                break; // Exit the loop if there's an error
+            }
+        }
+
+        // Clear the progress text after capturing images
+        progressDiv.textContent = '';
+    }
+
+    // Function to handle retraining model step
+    async function startRetrainingModel() {
+        // Update the popup message
+        const popupMessage = document.querySelector('.calibration-message');
+        popupMessage.textContent = 'Applying Calibration...';
+    
+        // Clear previous step progress
+        stepProgressDiv.textContent = '';
+        // Show progressDiv
+        progressDiv.innerHTML = 'Progress: 0% <div class="loading-spinner"></div>'; // Add the spinner
+    
+        // Start retraining by making a POST request to the backend
+        try {
+            const startRetrainingResponse = await fetch('/start_retraining', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+    
+            if (!startRetrainingResponse.ok) {
+                const errorData = await startRetrainingResponse.json();
+                console.error('Failed to start retraining:', errorData.message);
+                return;
+            }
+    
+            console.log('Retraining started successfully!');
+    
+            // Now start checking /get_calibration_progress for retraining progress
+            let progress = 0;
+            while (progress < 100) {
+                const progressResponse = await fetch('/get_calibration_progress');
+                if (progressResponse.ok) {
+                    const data = await progressResponse.json();
+                    progress = data.progress; // Assuming the backend returns {progress: <number>}
+                    const calibrationMessage = data.calibration_message; // Assuming backend sends this
+                    progressDiv.textContent = `${calibrationMessage}: ${progress}%`;
+                    
+                    // Append the spinner again
+                    progressDiv.innerHTML = `
+                                            <div style="display: flex; flex-direction: column; align-items: center;">
+                                                <div class="loading-spinner"></div>
+                                                <div>${calibrationMessage}: ${progress}%</div>
+                                            </div>
+                                        `;
+
+                } else {
+                    console.error('Failed to get calibration progress');
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before next check
+            }
+    
+            // Retraining complete
+            progressDiv.textContent = 'Retraining complete!';
+            console.log('Retraining process finished!');
+    
+            // Play the ping sound to indicate completion
+    
+            // Optionally, remove the calibration popup after completion
+            setTimeout(() => {
+                document.body.removeChild(calibrationBackground);
+            }, 2000); // Remove after 2 seconds
+    
+        } catch (error) {
+            console.error('Error during retraining process:', error);
+        }
+    }
+    
+
+}
+
+// Event listener for the calibration button
+document.getElementById('calibration-btn').addEventListener('click', () => {
+    createPopup(
+        'calibration-popup',
+        'Do you want to start the calibration procedure?',
+        start_calibration_procedure, // Call the calibration procedure if Yes is clicked
+        () => {
+            console.log('Calibration canceled');
+        }
+    );
+});
+
+
+
+
+
 
 function startTraining() {
     const modelName = document.getElementById('training-tab-model-name').value;
@@ -858,11 +1206,14 @@ document.addEventListener('DOMContentLoaded', (event) => {
     }
 
     const startExistingDatasetButton = document.getElementById('startExistingDatasetButton');
+
     if (startExistingDatasetButton) {
         startExistingDatasetButton.addEventListener('click', () => captureImages(nr_images)); // Pass the validated number of images
     } else {
         console.log('startExistingDatasetButton not found');
     }
+
+    
 
 
     toggleDatasetMode();
@@ -883,6 +1234,12 @@ document.addEventListener('DOMContentLoaded', (event) => {
             alert('Please select a dataset mode.');
             return;
         }
+
+        if (!cameraOn) {
+            alert("Please turn on camera first.");
+            return;
+        }
+
     
         const datasetMode = datasetModeElement.value;
         let datasetName;
@@ -965,14 +1322,13 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 document.body.appendChild(background);
                 document.body.appendChild(popup);
             });
-        };
+        }; 
     
-        const nr_images = await showPopup(`
-            You will take 2 sets of pictures.<br><br>
-            <strong>Set 1:</strong><br>
-            Direct your head in a direction and keep your eyes focused on the camera.<br><br>
-            <strong>Set 2:</strong><br>
-            Keep your head still and point your eyes away from the camera.<br><br>
+        let nr_images = await showPopup(`
+            You will take 3 sets of pictures.<br><br>
+            <strong>Notes:</strong><br>
+            - There will be a pause between each set.<br>
+            - <strong>Do Not Blink</strong> or move during capture!<br><br>
             Please enter the number of images per set:
         `, 'Continue to Set 1', true);
     
@@ -982,42 +1338,89 @@ document.addEventListener('DOMContentLoaded', (event) => {
         }
     
         const captureSet = async (cameraDirection, setDescription) => {
+            // Create the red circle if it doesn't exist yet
+            let bigRedCircle = document.getElementById('bigRedCircle');
+            if (!bigRedCircle) {
+                bigRedCircle = document.createElement('div');
+                bigRedCircle.id = 'bigRedCircle';
+                bigRedCircle.style.position = 'fixed';
+                bigRedCircle.style.width = '100px';
+                bigRedCircle.style.height = '100px';
+                bigRedCircle.style.borderRadius = '50%';
+                bigRedCircle.style.backgroundColor = 'red';
+                bigRedCircle.style.zIndex = '999';
+                document.body.appendChild(bigRedCircle);
+            }
+
+            // Show and position the red circle based on the camera direction
+            if (cameraDirection === 'lookingAtCamera') {
+                bigRedCircle.style.display = 'none';  // Hide the red circle when looking at the camera
+            } else if (cameraDirection === 'awayFromCamera') {
+                bigRedCircle.style.display = 'block';
+                bigRedCircle.style.top = '50%';  // Position towards the right for 'awayFromCamera'
+                bigRedCircle.style.left = '97%';
+                bigRedCircle.style.transform = 'translate(-50%, -50%)';
+            } else if (cameraDirection === 'awayFromCameraLeft') {
+                bigRedCircle.style.display = 'block';
+                bigRedCircle.style.top = '50%';  // Position towards the left for 'awayFromCameraLeft'
+                bigRedCircle.style.left = '3%';
+                bigRedCircle.style.transform = 'translate(-50%, -50%)';
+            }
+
+
             await showPopup(setDescription, 'Start');
-    
-            const payload = {
-                datasetMode: datasetMode,
-                datasetName: datasetName,
-                cameraDirection: cameraDirection
-            };
-    
-            const createDatasetElement = document.getElementById('CreateDataset');
-    
+        
+            let payload;
+            if (cameraDirection === 'awayFromCameraLeft') {
+                payload = {
+                    datasetMode: datasetMode,
+                    datasetName: datasetName,
+                    cameraDirection: 'awayFromCamera'
+                };
+            } else {
+                payload = {
+                    datasetMode: datasetMode,
+                    datasetName: datasetName,
+                    cameraDirection: cameraDirection
+                };
+            }
+        
+            
+        
             const progressDiv = document.createElement('div');
             progressDiv.className = 'progress-display';
             progressDiv.style.position = 'fixed';
-            progressDiv.style.top = '10%';
-            progressDiv.style.left = '50%';
-            progressDiv.style.transform = 'translateX(-50%)';
             progressDiv.style.backgroundColor = 'black';
             progressDiv.style.color = 'white';
             progressDiv.style.padding = '10px 20px';
             progressDiv.style.fontSize = '24px';
             progressDiv.style.zIndex = '1000';
-            document.body.appendChild(progressDiv);
-    
-            let flashDiv = '';
-            if (flash_status === 'on') {
-                flashDiv = document.createElement('div');
-                flashDiv.className = 'flash';
-                createDatasetElement.appendChild(flashDiv);
+        
+            // Adjust position of the progressDiv based on camera direction
+            if (cameraDirection === 'lookingAtCamera') {
+                progressDiv.style.top = '1vh';
+                progressDiv.style.left = '50vw';
+                progressDiv.style.transform = 'translateX(-50%)';
+            } else if (cameraDirection === 'awayFromCamera') {
+                progressDiv.style.top = '55vh';
+                progressDiv.style.left = '100vw';
+                progressDiv.style.transform = 'translateX(-80%)';
+            } else {
+                progressDiv.style.top = '55vh';
+                progressDiv.style.left = '0vw';
+                progressDiv.style.transform = 'translateX(0)';
             }
-    
-            const minimumDuration = (duration) => {
-                return new Promise(resolve => setTimeout(resolve, duration));
-            };
-    
-            for (let i = 0; i < nr_images; i++) {
-                progressDiv.textContent = `Image ${i + 1}/${nr_images}`;
+        
+            document.body.appendChild(progressDiv);
+        
+            if (cameraDirection !== 'lookingAtCamera'){
+                total_images = nr_images/2;
+            }else{
+                total_images = nr_images;
+            }
+
+            for (let i = 0; i < total_images; i++) {
+                progressDiv.textContent = `Image ${i + 1}/${total_images}`;
                 try {
                     const response = await fetch('/backend/capture-images', {
                         method: 'POST',
@@ -1026,7 +1429,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
                         },
                         body: JSON.stringify(payload)
                     });
-    
+        
                     if (response.ok) {
                         const result = await response.json();
                         console.log(result.message);
@@ -1037,31 +1440,21 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 } catch (error) {
                     console.error('Error capturing images:', error);
                     alert('Error capturing images.');
-                } finally {
-                    // if (flash_status === 'on') {
-                    //     setTimeout(() => {
-                    //         flashDiv.classList.remove('flash');
-                    //         setTimeout(() => {
-                    //             flashDiv.classList.add('flash');
-                    //             setTimeout(() => {
-                    //                 flashDiv.classList.remove('flash');
-                    //                 if (i === nr_images - 1) {
-                    //                     createDatasetElement.removeChild(flashDiv);
-                    //                 }
-                    //             }, 100);
-                    //         }, 100);
-                    //     }, 100);
-                    // }
                 }
-    
-                // await minimumDuration(500);  // Ensure at least 500ms between images
             }
-    
+
+            bigRedCircle.style.display = 'none';  // Hide the red circle when looking at the camera
+        
             document.body.removeChild(progressDiv);
+            
+            if (cameraDirection === 'awayFromCamera') {
+                console.log("Running third set");
+                await captureSet('awayFromCameraLeft', '<strong>Set 3:</strong><br> Keep your head still and point your eyes at the RED DOT on the LEFT.');
+            }
         };
     
-        await captureSet('lookingAtCamera', 'Set 1: Direct your head in any direction and keep your eyes pointed at the camera.');
-        await captureSet('awayFromCamera', 'Set 2: Keep your head in the same direction as Set 1 and point your eyes in the same direction as your head.');
+        await captureSet('lookingAtCamera', '<strong>Set 1:</strong><br> Direct your at the screen and keep your eyes pointed at the camera. Do Not Blink!');
+        await captureSet('awayFromCamera', '<strong>Set 2:</strong><br> Keep your head still and point your eyes in at the red dot on the RIGHT.');
         alert("Dataset Captured Successfully")
     }
     
@@ -1079,7 +1472,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
         statusMessage.classList.add('info'); // Add info class
 
         // Start the animation
-        startDotDotDotAnimation(statusMessage, 'Waiting for camera');
+        startLoadingAnimation(statusMessage, '');
 
         try {
             console.log('Sending POST request to /backend/toggle-camera');
@@ -1094,7 +1487,8 @@ document.addEventListener('DOMContentLoaded', (event) => {
             if (response.ok) {
                 const result = await response.json();
                 console.log('Response OK:', result);
-                statusMessage.textContent = `${result.status}`;  // Update status message
+                
+                
                 statusMessage.classList.remove('info');  // Remove info class
                 statusMessage.classList.add('success');  // Add success class
 
@@ -1102,17 +1496,25 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 console.log("my toggle camera before: ", cameraOn)
                 if (result.status === 'On'){
                     cameraOn =  true;
+                    statusMessage.textContent = '🛑';
+                    toggleCorrectionSelectModel();
                 }else{
                     cameraOn =  false;
+                    statusMessage.textContent = '📷';
+                    toggleCorrectionSelectModel();
                 }
-                
+                                
+
+
+
                 console.log("my toggle camera after: ", cameraOn)
                 refreshLiveViews();
 
             } else {
                 const errorData = await response.json();
                 console.log('Response error:', errorData);
-                statusMessage.textContent = `Failed to toggle camera: ${errorData.error}`;  // Update status message
+                // statusMessage.textContent = `Failed to toggle camera: ${errorData.error}`;  // Update status message
+                statusMessage.textContent = `ERROR`;
                 statusMessage.classList.remove('info');  // Remove info class
                 statusMessage.classList.add('error');  // Add error class
             }
@@ -1133,14 +1535,28 @@ document.addEventListener('DOMContentLoaded', (event) => {
         manageWebsockets(activeTabName);
     }
 
-    function startDotDotDotAnimation(element, baseText) {
-        let dotCount = 0;
+    function startLoadingAnimation(element, baseText) {
+        // Create a container to hold the baseText and loading icon
+        const loadingContainer = document.createElement('span');
+        loadingContainer.textContent = baseText;
+    
+        // Create the loading icon element
+        const loadingIcon = document.createElement('div');
+        loadingIcon.classList.add('loading-icon');
+    
+        // Append the loading icon to the container
+        loadingContainer.appendChild(loadingIcon);
+    
+        // Clear any existing content in the element and append the new container
+        element.innerHTML = '';
+        element.appendChild(loadingContainer);
+    
+        // Store the interval ID globally for later use if needed
         animationInterval = setInterval(() => {
-            let dots = '.'.repeat(dotCount % 4);
-            element.textContent = `${baseText}${dots}`;
-            dotCount++;
-        }, 500);  // Adjust the interval as needed
+            // Animation logic handled by CSS, so this is a placeholder to keep consistency
+        }, 1000);  // Adjust interval if needed, but the CSS handles the animation
     }
+    
 
     function toggleDatasetMode() {
         const newDatasetOptions = document.getElementById('newDatasetOptions');
@@ -1184,9 +1600,11 @@ document.addEventListener('DOMContentLoaded', (event) => {
             if (response.ok) {
                 const result = await response.json();
                 console.log('Initial camera state retrieved successfully:', result);
-                statusMessage.textContent = `${result.camera_on ? 'On' : 'Off'}`;
+                statusMessage.textContent = `${result.camera_on ? '🛑' : '📷'}`; // Camera emoji for "On" and crossed circle for "Off"
+                statusMessage.style.fontSize = '48px';
                 statusMessage.classList.remove('info');  // Remove info class
                 statusMessage.classList.add('success');  // Add success class
+                
 
                 // Initialize WebSocket connections
                 
