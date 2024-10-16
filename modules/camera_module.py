@@ -22,9 +22,9 @@ class CameraModule:
     def __init__(self):
         self.camera_on = False
         self.camera = None
-        self.device_nr = 1  # 0 or 1 or 2
+        self.device_nr = 2 # 0 or 1 or 2
         self.eyes_processor = Eyes()
-        self.frame_queue = queue.Queue(maxsize=5)
+        self.frame_queue = queue.Queue(maxsize=15)
         self.camera_thread = None
         self.stop_event = threading.Event()
         self.left_eye_frame = None
@@ -195,7 +195,7 @@ class CameraModule:
                 return self._process_live_video_left_frame(frame)
 
             elif stream == "live-video-right":
-                return self._process_live_video_right_frame_async(frame)
+                return self._process_live_video_right_frame_async(self.latest_frame)
 
             else:
                 logging.error(f"ERROR: Stream name not recognized: {stream}")
@@ -297,6 +297,7 @@ class CameraModule:
 
     def _generate_eye_images(self, frame): 
         try:
+            time.sleep(10)
             start_time = time.time()
             print("[INFO] Starting image generation for both eyes...")
 

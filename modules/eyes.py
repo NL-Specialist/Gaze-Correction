@@ -21,11 +21,16 @@ class Eyes:
             self.fixed_box_height = 24  # Fixed bounding box height
             self.fixed_box_width = 50   # Fixed bounding box width
             self.fixed_box_dimensions = (self.fixed_box_width, self.fixed_box_height)
-            self.offset_y = 20  # Offset to move the bounding box up
-            self.left_eye_offset_x = 0  # Offset to move the left eye bounding box left/right
+
+
+            self.offset_y = 20 # 18  For Laptop ---> Offset to move the bounding box up
+
+            self.left_eye_offset_x = -5  # Offset to move the left eye bounding box left/right
             self.left_eye_offset_y = 5  # Offset to move the left eye bounding box up/down
-            self.right_eye_offset_x = 5  # Offset to move the right eye bounding box left/right
+
+            self.right_eye_offset_x = 10  # Offset to move the right eye bounding box left/right
             self.right_eye_offset_y = 5  # Offset to move the right eye bounding box up/down
+            
             self.left_eye_bbox = None
             self.right_eye_bbox = None
 
@@ -88,7 +93,7 @@ class Eyes:
             if classify_gaze:
                 # Determine gaze direction
                 self.gaze_direction = self.gaze_classifier.classify_gaze(frame, show_face_mesh)
-                self.should_correct_gaze =  self.gaze_direction == "Gaze Direction: Away"
+                self.should_correct_gaze =  True #self.gaze_direction == "Gaze Direction: Away"
 
                 cv2.putText(frame, self.gaze_direction, (w // 2 - 100, h // 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
@@ -392,7 +397,7 @@ class Eyes:
                 eye_img_matched = eye_img_matched.astype(eye_region.dtype)
 
             # Increase the weight of the eye image to make it more prominent
-            blended_eye = cv2.addWeighted(eye_region, 0.2, eye_img_matched, 0.8, 0)
+            blended_eye = cv2.addWeighted(eye_region, 0.3, eye_img_matched, 0.7, 0)
 
             # If the eye image has an alpha channel, blend only the RGB channels
             if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel

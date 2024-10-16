@@ -347,12 +347,14 @@ def get_image(epoch):
         'predicted_image_path': predicted_image_path
     })
 
+
 def clear_existing_training(model_name):
     global model_path
     model_path = os.path.join('models', model_name)
+
+    # Clear 'models/modelname' folder
     if os.path.exists(model_path):
-        # Delete all files and folders inside the directory
-        print(f"[INFO] Clearing existing training in path: ", model_path)
+        print(f"[INFO] Clearing existing training in path: {model_path}")
         for filename in os.listdir(model_path):
             file_path = os.path.join(model_path, filename)
             try:
@@ -362,8 +364,9 @@ def clear_existing_training(model_name):
                     shutil.rmtree(file_path)  # Remove the directory and its contents
             except Exception as e:
                 print(f'[ERROR] Failed to delete {file_path}. Reason: {e}')
-    else: 
+    else:
         os.makedirs(model_path, exist_ok=True)
+
 
 def send_files_concurrently(folder_path, dataset_name):
     global dataset_loading_progress, total_files, files_sent, calibration_progress
@@ -398,6 +401,7 @@ def send_files_concurrently(folder_path, dataset_name):
                     executor.submit(send_file, file_path, rel_path)
                 else:
                     print(f"[DEBUG] Skipped file: {filename} (not an image)")
+    dataset_loading_progress = 100
     time.sleep(5)
     print("[INFO] All files sent successfully.")
 
@@ -571,11 +575,11 @@ def start_training():
 def training_progress():
     global progress
     def event_generator():
-        global progress, epoch_count, total_epochs, generator_losses, discriminator_losses
+        global progress, epoch_count, total_epochs, generator_losses, discriminator_losses, model_name
 
         while progress < 100:
             time.sleep(0.1)
-            saved_images, checkpoint_images_path = get_checkpoint_images()
+            saved_images, checkpoint_images_path = get_checkpoint_images(checkpoint_model_name=model_name)
             if saved_images:
                 input_image_path = next((img for img in saved_images if "input" in img), None)
                 input_image_path = os.path.join(checkpoint_images_path, input_image_path)
@@ -599,44 +603,48 @@ def training_progress():
     return Response(event_generator(), content_type='text/event-stream')
 
 
-def get_checkpoint_images(timeout=600):
-    global progress, generator_losses, discriminator_losses, epoch_count, model_path, model_name
+def get_checkpoint_images(checkpoint_model_name='Auto', timeout=600):
+    global progress, generator_losses, discriminator_losses, epoch_count, model_path
     try:
-        print("Sending get checkpoint request, waiting for response...")
-        response = requests.post("http://192.168.0.58:8021/get_checkpoint_image/", json={'checkpoint_image_model_name': model_name}, timeout=timeout)
+        print(f"INFO: Sending get checkpoint request for model: {checkpoint_model_name}, waiting for response...")
+        response = requests.post("http://192.168.0.58:8021/get_checkpoint_image/", 
+                                 json={'checkpoint_image_model_name': checkpoint_model_name}, 
+                                 timeout=timeout)
         response.raise_for_status()
+        print("INFO: Response received successfully")
 
         checkpoint_data = response.json()
         checkpoint_images_data = checkpoint_data.get("images")
         epoch_count = checkpoint_data.get("epoch_count")
+        print(f"INFO: Checkpoint data received, Epoch count: {epoch_count}")
 
         if checkpoint_images_data:
             checkpoint_images_path = os.path.join(model_path, "image_checkpoints")
             if not os.path.exists(checkpoint_images_path):
                 os.mkdir(checkpoint_images_path)
-                print(f"Created directory: {checkpoint_images_path}")
+                print(f"INFO: Created directory: {checkpoint_images_path}")
 
             progress = checkpoint_data.get("progress")
-            # print(f"Processing checkpoint images for progress: {progress}%")
+            print(f"INFO: Processing checkpoint images for progress: {progress}%")
 
             saved_images = []
 
             for filename, content in checkpoint_images_data.items():
-                # print(f"Saving image: {filename}")
+                print(f"DEBUG: Saving image: {filename}")
                 image_path = os.path.join(checkpoint_images_path, filename)
                 image_content = base64.b64decode(content)
 
                 with open(image_path, "wb") as f:
                     f.write(image_content)
-                    # print(f"Saved image to: {image_path}")
+                    print(f"INFO: Saved image to: {image_path}")
                     saved_images.append(filename)
 
             generator_loss = checkpoint_data.get("generator_loss", 0)
             discriminator_loss = checkpoint_data.get("discriminator_loss", 0)
 
-            print(f"Updated Checkpoint Progress: {progress}%")
-            print(f"Updated Checkpoint Generator loss: {generator_loss}")
-            print(f"Updated Checkpoint Discriminator loss: {discriminator_loss}")
+            print(f"INFO: Updated Checkpoint Progress: {progress}%")
+            print(f"INFO: Updated Generator Loss: {generator_loss}")
+            print(f"INFO: Updated Discriminator Loss: {discriminator_loss}")
 
             generator_losses.append(generator_loss)
             discriminator_losses.append(discriminator_loss)
@@ -644,7 +652,7 @@ def get_checkpoint_images(timeout=600):
             return saved_images, checkpoint_images_path
 
         else:
-            print("Checkpoint images data is missing")
+            print("ERROR: Checkpoint images data is missing")
             return None, None
 
     except requests.exceptions.RequestException as e:
@@ -663,15 +671,15 @@ calibration_progress = {'progress': 0, 'calibration_message': ''}
 
 def start_auto_training():
     global calibration_progress, dataset_loading_progress, model_name, folder_path
-    calibration_progress['calibration_message'] = 'Sending dataset to server'
+    calibration_progress['calibration_message'] = 'Sending dataset to cloud GPU'
       
     dataset_loading_progress = 0
-    model_name = 'auto'
+    model_name = 'Auto'
     print(f"[INFO] Model name set to: {model_name}")
 
-    clear_existing_training(model_name)
+    # clear_existing_training(model_name)
 
-    dataset_name = 'auto'
+    dataset_name = 'Auto'
     print(f"[INFO] Dataset name set to: {dataset_name}")
 
     folder_path = f'datasets/{dataset_name}'
@@ -696,7 +704,7 @@ def start_calibration_training(folder_path):
     
     global calibration_progress
     calibration_progress['progress'] = 0
-    calibration_progress['calibration_message'] = 'Retraining model on calibration dataset.'
+    calibration_progress['calibration_message'] = 'Calibrating model'
     
     try:
         print(f"[INFO] Sending training request to /train with folder_path: {folder_path}")
@@ -704,25 +712,29 @@ def start_calibration_training(folder_path):
         response = requests.post(
             "http://192.168.0.58:8021/train", 
             json={
-                'train_model_name': 'auto', 
+                'train_model_name': 'Auto', 
                 'dataset_path': folder_path, 
-                'epochs': 10, 
+                'epochs': 20, 
                 'learning_rate': 0.0002
             }
         )
         
         response.raise_for_status()  # This will raise an error for 4xx/5xx responses
         print(f"[INFO] Training request successful: {response.status_code}")
+        threading.Thread(target=get_calibration_training_progress).start()
+
     
     except requests.exceptions.RequestException as e:
         print(f"[ERROR] Failed to send request to /train: {e}")
         return  # Stop execution if the request fails
 
+def get_calibration_training_progress():
+    global progress
     progress = 0
     while progress < 100:
         try:
             time.sleep(0.1)  # Simulate some delay or progress polling
-            saved_images, checkpoint_images_path = get_checkpoint_images()
+            saved_images, checkpoint_images_path = get_checkpoint_images(checkpoint_model_name='Auto')
 
             if saved_images:
                 print(f"[DEBUG] Checkpoint images found: {saved_images}")
@@ -737,9 +749,10 @@ def start_calibration_training(folder_path):
                 predicted_image_path = os.path.join(checkpoint_images_path, predicted_image_path)
                 
                 if input_image_path and target_image_path and predicted_image_path:
-                    progress += 10  # Simulate progress update
+
                     calibration_progress['progress'] = progress
-                    calibration_progress['calibration_message'] = f"""
+                    
+                    print(f"""
                         Training Progress:
                         -------------------
                         Progress:           {progress:.2f}%
@@ -755,7 +768,7 @@ def start_calibration_training(folder_path):
                         -------
                         Generator Loss:     0.1234
                         Discriminator Loss: 0.5678
-                    """.encode('utf-8')
+                    """)
                     
                     print(f"[INFO] Training progress updated: {progress}%")
                     print(f"[DEBUG] Image paths - Input: {input_image_path}, Target: {target_image_path}, Predicted: {predicted_image_path}")
@@ -774,6 +787,55 @@ def start_calibration_training(folder_path):
 @app.route('/get_calibration_progress', methods=['GET'])
 def get_calibration_progress():
     return jsonify(calibration_progress)
+
+# Function to delete the Auto dataset
+def delete_Auto_dataset_and_model():
+    global model_path
+    model_path = os.path.join('models', 'Auto')
+
+    # Clear 'models/modelname' folder
+    if os.path.exists(model_path):
+        print(f"[INFO] Clearing existing training in path: {model_path}")
+        for filename in os.listdir(model_path):
+            file_path = os.path.join(model_path, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)  # Remove the file or link
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)  # Remove the directory and its contents
+            except Exception as e:
+                print(f'[ERROR] Failed to delete {file_path}. Reason: {e}')
+    else:
+        os.makedirs(model_path, exist_ok=True)
+
+    model_name = 'Auto'
+    datasets_path = os.path.join('datasets', model_name)
+    if os.path.exists(datasets_path):
+        print(f"[INFO] Clearing existing dataset in path: {datasets_path}")
+        try:
+            shutil.rmtree(datasets_path)  # Remove the datasets directory and its contents
+            return True, f"[INFO] Successfully deleted dataset at {datasets_path}"
+        except Exception as e:
+            return False, f"[ERROR] Failed to delete {datasets_path}. Reason: {e}"
+    else:
+        return False, f"[ERROR] Dataset path does not exist: {datasets_path}"
+
+# Route to handle the dataset deletion
+@app.route('/delete_auto_dataset', methods=['POST'])
+def delete_auto_dataset():
+    data = request.json
+    dataset_name = data.get('dataset_name')
+    
+    if not dataset_name:
+        return jsonify({"message": "Dataset name is required"}), 400
+
+    # Call the function to delete dataset and model
+    success, message = delete_Auto_dataset_and_model()
+
+    if success:
+        return jsonify({"message": message}), 200
+    else:
+        return jsonify({"message": message}), 500
 
 @app.route('/start_retraining', methods=['POST'])
 def start_retraining():

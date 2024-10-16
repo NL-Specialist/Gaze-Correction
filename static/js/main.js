@@ -532,6 +532,32 @@ function createPopup(id, message, yesCallback, noCallback) {
     document.body.appendChild(popupBackground);
 }
 
+function deleteAutoDataset() {
+    fetch('/delete_auto_dataset', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ dataset_name: 'Auto' })  // Add body content if required
+    })
+    .then(response => {
+        if (response.ok) {
+            console.log('[INFO] Dataset deletion request successful.');
+            return response.json();
+        } else {
+            throw new Error('Dataset deletion request failed.');
+        }
+    })
+    .then(data => {
+        console.log(data.message);
+    })
+    .catch(error => {
+        console.error('[ERROR] ' + error.message);
+    });
+}
+
+
+
 function start_calibration_procedure() {
     sendSelectedModel('disabled');
 
@@ -616,6 +642,8 @@ function start_calibration_procedure() {
     let progressDiv;
 
     async function startCalibrationCapture() {
+        deleteAutoDataset();
+
         // Create a div to show step progress
         stepProgressDiv = document.createElement('div');
         stepProgressDiv.className = 'calibration-step-progress';
@@ -626,7 +654,7 @@ function start_calibration_procedure() {
         progressDiv.className = 'calibration-progress';
         contentContainer.appendChild(progressDiv);
 
-        let image_count = 100;
+        let image_count = 200;
 
         const steps = [
             {
@@ -634,7 +662,7 @@ function start_calibration_procedure() {
                 message: 'Look at the camera and DO NOT BLINK...',
                 payload: {
                     datasetMode: 'new',
-                    datasetName: 'auto',
+                    datasetName: 'Auto',
                     cameraDirection: 'lookingAtCamera'
                 }
             },
@@ -643,7 +671,7 @@ function start_calibration_procedure() {
                 message: 'Turn your eyes to the left of your screen and DO NOT BLINK.',
                 payload: {
                     datasetMode: 'existing',
-                    datasetName: 'auto',
+                    datasetName: 'Auto',
                     cameraDirection: 'awayFromCamera'
                 }
             },
@@ -652,7 +680,7 @@ function start_calibration_procedure() {
                 message: 'Turn your eyes to the right of your screen and DO NOT BLINK.',
                 payload: {
                     datasetMode: 'existing',
-                    datasetName: 'auto',
+                    datasetName: 'Auto',
                     cameraDirection: 'awayFromCamera'
                 }
             }
@@ -661,11 +689,12 @@ function start_calibration_procedure() {
         let currentStepIndex = 0;
 
         async function proceedToNextStep() {
+            playPing();
+            const popupMessage = document.querySelector('.calibration-message');
             if (currentStepIndex < steps.length) {
                 const step = steps[currentStepIndex];
 
                 // Update the popup message
-                const popupMessage = document.querySelector('.calibration-message');
                 popupMessage.textContent = step.message;
 
                 // Update step progress
@@ -732,7 +761,6 @@ function start_calibration_procedure() {
 
         // Clear the progress text after capturing images
         progressDiv.textContent = '';
-        playPing();
     }
 
     // Function to handle retraining model step
