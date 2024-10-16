@@ -278,7 +278,6 @@ class Eyes:
 
             if self.should_correct_gaze:
                 print("Gaze correction is enabled")
-                
                 # Convert frame to RGB for face mesh processing
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 print("Converted frame to RGB for face mesh processing")
