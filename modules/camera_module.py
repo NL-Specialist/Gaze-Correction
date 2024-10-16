@@ -42,7 +42,7 @@ class CameraModule:
         self.lock = threading.Lock()  # Optional lock if you need more control
         self.thread_running = False
         
-        self.vcam = self.init_vcam(640, 480)  # For webcam
+        # self.vcam = self.init_vcam(640, 480)  # For webcam
         # self.vcam = self.init_vcam(960, 540)    # For iphone
 
     def set_active_model(self, active_model):

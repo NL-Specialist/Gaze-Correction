@@ -4,12 +4,12 @@ body, html {
     height: 100%;
     width: 100%;
     font-family: 'Poppins', sans-serif;
-    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%);
-    /* background: linear-gradient(135deg, #293241 0%, #98c1d9 100%); */
-    /* background: transparent; */
+    background: url('bg.jpg') no-repeat center center fixed;
+    background-size: cover;
     color: #e8e8e8;
     overflow: hidden;
 }
+
 
 h1 {
     font-family: 'Poppins', sans-serif;
@@ -164,7 +164,7 @@ h1 {
     width: 40%;
     justify-content: center;
     border-bottom: 2px solid #444;
-    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 150%);
+    background: #2F3B51;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     border-radius: 25px;
     padding: 0;
@@ -322,24 +322,21 @@ h1 {
 #calibration-btn {
     margin-left: 10px;
     background: none; /* No background since we're using an image */
-    border: none; /* Remove default border */
-    padding: 0; /* Remove default padding */
+    border: none; /* Remove the button border */
+    outline: none; /* Remove the focus outline */
+    padding: 0; /* Remove any extra padding */
     cursor: pointer; /* Show pointer cursor on hover */
-    border-radius: 50%; /* Circular button shape for consistency */
     transition: all 0.3s ease; /* Smooth transition for hover effects */
-    box-shadow: 0 3px 5px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
 }
 
 /* Hover effect for the calibration button */
 #calibration-btn:hover {
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Slightly stronger shadow on hover */
     transform: scale(1.05); /* Slightly larger on hover */
 }
 
 /* Active state when the button is clicked */
 #calibration-btn:active {
     transform: scale(0.95); /* Shrink slightly when clicked */
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Lighter shadow on click */
 }
 
 /* Optional: Adjust the image inside the button if needed */
@@ -347,6 +344,10 @@ h1 {
     width: 30px; /* Set the size of the image */
     height: 30px; /* Maintain square size */
     display: block; /* Ensure image is centered and no extra space */
+    pointer-events: none; /* Prevent the image from interfering with button events */
+    border: none; /* Remove the button border */
+    outline: none; /* Remove the focus outline */
+    padding: 0; /* Remove any extra padding */
 }
 
 
@@ -365,6 +366,7 @@ h1 {
  
 #live-video-left {
     /* margin-top: 10vh; */
+    background: #2F3B51;
     height: 100vh;
     width: 100vw;
 }
@@ -384,6 +386,7 @@ h1 {
 
 #live-video-right {
     /* margin-top: 10vh;  */
+    background: #2F3B51;
     height: 100vh;
     width: 100vw;
 } 
@@ -564,6 +567,10 @@ img {
     animation: fadeIn 1s;
 }
 
+#live-video-1 {
+    background: #2F3B51;
+}
+
 
 
 
@@ -575,6 +582,10 @@ img {
     animation: fadeIn 1s;
 }
 
+#live-video-left-eye {
+    background: #2F3B51;
+}
+
 #video4 {
     bottom: 0%;
     right: 2%;
@@ -583,6 +594,9 @@ img {
     animation: fadeIn 1s;
 }
 
+#live-video-right-eye {
+    background: #2F3B51;
+}
 
 .flash {
     position: fixed;
@@ -599,7 +613,7 @@ img {
 
 /* Styles for the settings panel */
 #settings-panel {
-    background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 100%);
+    background: #2F3B51;
     border-radius: 20px;
     padding: 25px;
     box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
@@ -927,7 +941,7 @@ img {
     border-radius: 10px;
     border: 2px solid #ffffff;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    /* background-color: rgb(99, 255, 104); */
+    background: #2F3B51;
 }
 
 
@@ -950,6 +964,7 @@ img {
     align-items: center;
     gap: 10px; /* Space between buttons */
     margin-right: 20px; /* Space between buttons and loading bar */
+    background: #2F3B51;
 }
 
 .training-controls button {
@@ -957,7 +972,7 @@ img {
     font-size: 14px;
     font-weight: 600;
     color: #e3f2fd;
-    border: 2px solid #3d5a80;
+    border: 2px solid white;
     padding: 10px 10px;
     border-radius: 5px;
     cursor: pointer;
@@ -1052,8 +1067,8 @@ img {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    background: inherit;
-    border: 2px solid #3d5a80;
+    background: #2F3B51;
+    border: 2px solid white;
     border-radius: 10px;
     padding: 20px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
@@ -1105,8 +1120,8 @@ img {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    background: inherit;
-    border: 2px solid #3d5a80;
+    background: #2F3B51;
+    border: 2px solid white;
     border-radius: 10px;
     padding: 20px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);

@@ -256,7 +256,13 @@ function toggleCorrectionSelectModel() {
 }
 
 document.addEventListener('DOMContentLoaded', (event) => {
-
+    document.getElementById('correction-select-model').addEventListener('click', function () {
+        if (!cameraOn) {
+            alert('Please turn on the camera to activate the gaze correction.');
+            return; // Prevent further execution if the camera is off
+        }
+    });
+    
     document.getElementById('correction-select-model').addEventListener('change', function () {
         const selectedModel = this.value;
         const checkpointDropdown = document.getElementById('correction-select-model-checkpoint');
@@ -836,6 +842,12 @@ function start_calibration_procedure() {
 
 // Event listener for the calibration button
 document.getElementById('calibration-btn').addEventListener('click', () => {
+    if (!cameraOn) {
+        alert('Please turn on the camera to start the calibration procedure.');
+        return; // Prevent further execution if the camera is off
+    }
+    
+    // Proceed with showing the popup if the camera is on
     createPopup(
         'calibration-popup',
         'Do you want to start the calibration procedure?',
@@ -845,6 +857,7 @@ document.getElementById('calibration-btn').addEventListener('click', () => {
         }
     );
 });
+
 
 
 
