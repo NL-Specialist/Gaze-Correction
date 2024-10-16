@@ -2,8 +2,6 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 from modules.eyes_gan_dataset import EYES_GAN_DATASET
 import os
-
-import tensorflow as tf
 from tensorflow.keras.layers import Layer
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, Conv2DTranspose, BatchNormalization, LeakyReLU, ReLU, Concatenate
@@ -17,15 +15,25 @@ class ResizeLayer(Layer):
     def call(self, inputs):
         return tf.image.resize(inputs, [self.target_height, self.target_width])
 
-
 class EYES_GAN_GENERATOR:
     LAMBDA = 100
     loss_object = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
-    def __init__(self, input_shape=(24, 50, 3), output_channels=3):
+    def __init__(self, input_shape=(24, 50, 3), output_channels=3, gpu_index="0"):        
+        # Set the device context to the specified GPU
+        self.device = f'GPU:{gpu_index}'
+        print(f"[INFO] Using device: {self.device}")
+
         self.input_shape = input_shape
         self.OUTPUT_CHANNELS = output_channels
-        self.generator = self.build_generator()
+
+        # Make sure to check if the device is available
+        physical_devices = tf.config.list_physical_devices('GPU')
+        if not physical_devices or len(physical_devices) <= int(gpu_index):
+            raise RuntimeError(f"[ERROR] GPU {gpu_index} is not available. Available GPUs: {physical_devices}")
+
+        with tf.device(self.device):
+            self.generator = self.build_generator()
 
     def downsample(self, filters, size, apply_batchnorm=True):
         """Downsamples an input by a factor of 2."""
@@ -102,21 +110,22 @@ class EYES_GAN_GENERATOR:
 
         return Model(inputs=inputs, outputs=x)
 
-
     def generate_and_save_image(self, input_image, save_path='generated_image.png'):
         """Generates an image using the generator and saves it to the specified path."""
-        print("Predicting Images...")
-        gen_output = self.generator(input_image, training=True)
-        def save_image(image, save_path):
-            if len(image.shape) == 4:
-                image = tf.squeeze(image, axis=0)
-            image = (image + 1.0) * 127.5
-            image = tf.cast(image, tf.uint8)
-            encoded_image = tf.image.encode_jpeg(image)
-            tf.io.write_file(save_path, encoded_image)
-            # print(f"Generated image saved to {save_path}")
-            
-        save_image(gen_output, save_path)
+        with tf.device(self.device):  # Ensure the generation happens on the specified device
+            print("Predicting Images...")
+            gen_output = self.generator(input_image, training=True)
+
+            def save_image(image, save_path):
+                if len(image.shape) == 4:
+                    image = tf.squeeze(image, axis=0)
+                image = (image + 1.0) * 127.5
+                image = tf.cast(image, tf.uint8)
+                encoded_image = tf.image.encode_jpeg(image)
+                tf.io.write_file(save_path, encoded_image)
+                # print(f"Generated image saved to {save_path}")
+
+            save_image(gen_output, save_path)
         return gen_output
 
     @staticmethod
@@ -127,4 +136,3 @@ class EYES_GAN_GENERATOR:
         total_gen_loss = gan_loss + (EYES_GAN_GENERATOR.LAMBDA * l1_loss)
         print(f"Generator loss: {total_gen_loss}, GAN loss: {gan_loss}, L1 loss: {l1_loss}")
         return total_gen_loss, gan_loss, l1_loss
-
