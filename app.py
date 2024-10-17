@@ -1,11 +1,17 @@
+# Flask and Flask-SocketIO imports
+from flask import Flask, render_template, jsonify, request, Response, send_file, send_from_directory
+from flask_socketio import SocketIO, emit
+
+# Custom module imports
+from modules.camera_module import CameraModule
+
+# Environment variable handling
+from dotenv import load_dotenv
+
+# Standard library imports
 import os
 import logging
 import threading
-from flask import Flask, render_template, jsonify, request, Response, send_file
-from flask_socketio import SocketIO, emit
-from flask import send_from_directory
-from modules.camera_module import CameraModule
-from dotenv import load_dotenv
 import zipfile
 import io
 import time
@@ -13,10 +19,13 @@ import json
 import random
 import requests
 import base64
-from concurrent.futures import ThreadPoolExecutor
 import shutil
 import re
+
+# Asynchronous and multi-threading utilities
+from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
+
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -98,6 +107,7 @@ def set_correction_model():
             if not selected_model == 'disabled':
                 restore_checkpoint_response = requests.post("http://192.168.0.58:8021/restore_checkpoint/", json={"checkpoint_nr":-1})
                 if restore_checkpoint_response.status_code == 200:
+                    time.sleep(5)
                     camera_module.set_active_model(ACTIVE_MODEL)
                 else:
                     print(f"[ERROR] Restoring checkpoint failed with status code {restore_checkpoint_response.status_code}, response text: {restore_checkpoint_response.text}")
@@ -129,10 +139,15 @@ def get_datasets():
     models = [entry for entry in model_entries if os.path.isdir(os.path.join(MODELS_PATH, entry))]
     
     # Create a list of dictionaries for the datasets
-    models_list = [{'value': 'Auto', 'text': 'Auto'}] + [{'value': 'Auto', 'text': 'disabled'}] + [{'value': model, 'text': model} for model in models]
+    if 'Auto' in models:
+        models_list = [{'value': model, 'text': model} for model in models]
+    else:
+        models_list = [{'value': 'Auto', 'text': 'Auto'}] + [{'value': model, 'text': model} for model in models]
 
-
-
+    if 'disabled' in models:
+        models_list = [{'value': model, 'text': model} for model in models]
+    else:
+        models_list = [{'value': 'disabled', 'text': 'disabled'}] + [{'value': model, 'text': model} for model in models]
     
     return jsonify({'datasets': datasets_list, 'models': models_list})
 
@@ -733,7 +748,7 @@ def get_calibration_training_progress():
     progress = 0
     while progress < 100:
         try:
-            time.sleep(0.1)  # Simulate some delay or progress polling
+            time.sleep(10)  # Simulate some delay or progress polling
             saved_images, checkpoint_images_path = get_checkpoint_images(checkpoint_model_name='Auto')
 
             if saved_images:
@@ -850,4 +865,4 @@ def start_retraining():
 
 
 if __name__ == "__main__":
-    socketio.run(app, host='127.0.0.1', port=8022, debug=False)
+    socketio.run(app, host='127.0.0.1', port=8000, debug=False)

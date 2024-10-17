@@ -249,22 +249,24 @@ function toggleDatasetMode() {
 
 const correctionSelectModel = document.getElementById('correction-select-model');
 const checkpointDropdown = document.getElementById('correction-select-model-checkpoint');
-
+let selectedModel = '';
 // Function to toggle the correction select dropdown based on cameraOn value
 function toggleCorrectionSelectModel() {
     correctionSelectModel.disabled = !cameraOn;
 }
 
 document.addEventListener('DOMContentLoaded', (event) => {
-    document.getElementById('correction-select-model').addEventListener('click', function () {
-        if (!cameraOn) {
-            alert('Please turn on the camera to activate the gaze correction.');
-            return; // Prevent further execution if the camera is off
-        }
-    });
+    // sendSelectedModel(selectedModel);
+    // document.getElementById('correction-select-model').addEventListener('click', function () {
+    //     if (!cameraOn) {
+    //         alert('Please turn on the camera to activate the gaze correction.');
+    //         return; // Prevent further execution if the camera is off
+    //     }
+    // });
     
     document.getElementById('correction-select-model').addEventListener('change', function () {
-        const selectedModel = this.value;
+        selectedModel = this.value;
+        console.log('selectedModel: ', selectedModel);
         const checkpointDropdown = document.getElementById('correction-select-model-checkpoint');
 
         if (selectedModel === 'disabled')
@@ -278,8 +280,6 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
         sendSelectedModel(selectedModel);
     });
-
-    sendSelectedModel('Auto');
 
     document.getElementById('correction-select-model-checkpoint').addEventListener('change', function () {
         const selectedCheckpoint = this.value;
@@ -512,25 +512,38 @@ function createPopup(id, message, yesCallback, noCallback) {
     text.textContent = message;
     content.appendChild(text);
 
-    // Add the Yes button
-    const yesButton = document.createElement('button');
-    yesButton.className = 'training_popup-yes-button';
-    yesButton.textContent = 'Yes';
-    yesButton.onclick = () => {
-        document.body.removeChild(popupBackground);
-        if (yesCallback) yesCallback(); // Trigger the Yes callback
-    };
-    content.appendChild(yesButton);
+    if (message==='Loading Dataset...'){
+        // Add the Yes button
+        const continueButton = document.createElement('button');
+        continueButton.className = 'training_popup-yes-button';
+        continueButton.textContent = 'Continue';
+        continueButton.onclick = () => {
+            document.body.removeChild(popupBackground);
+            if (yesCallback) yesCallback(); // Trigger the Yes callback
+        };
+        content.appendChild(continueButton);
+    }else{
+        // Add the Yes button
+        const yesButton = document.createElement('button');
+        yesButton.className = 'training_popup-yes-button';
+        yesButton.textContent = 'Yes';
+        yesButton.onclick = () => {
+            document.body.removeChild(popupBackground);
+            if (yesCallback) yesCallback(); // Trigger the Yes callback
+        };
+        content.appendChild(yesButton);
 
-    // Add the No button
-    const noButton = document.createElement('button');
-    noButton.className = 'training_popup-no-button';
-    noButton.textContent = 'No';
-    noButton.onclick = () => {
-        document.body.removeChild(popupBackground);
-        if (noCallback) noCallback(); // Trigger the No callback
-    };
-    content.appendChild(noButton);
+        // Add the No button
+        const noButton = document.createElement('button');
+        noButton.className = 'training_popup-no-button';
+        noButton.textContent = 'No';
+        noButton.onclick = () => {
+            document.body.removeChild(popupBackground);
+            if (noCallback) noCallback(); // Trigger the No callback
+        };
+        content.appendChild(noButton);
+    }
+        
 
     // Append content to the popup and popup to the background
     popup.appendChild(content);
@@ -818,7 +831,7 @@ function start_calibration_procedure() {
                 } else {
                     console.error('Failed to get calibration progress');
                 }
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before next check
+                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before next check
             }
     
             // Retraining complete
@@ -1509,6 +1522,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 console.log("my toggle camera before: ", cameraOn)
                 if (result.status === 'On'){
                     cameraOn =  true;
+                    sendSelectedModel(selectedModel);
                     statusMessage.textContent = '🛑';
                     toggleCorrectionSelectModel();
                 }else{

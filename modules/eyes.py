@@ -291,7 +291,7 @@ class Eyes:
                         self._calculate_eye_boxes(face_landmarks, frame)
 
                         # Retry loading corrected images until they exist
-                        max_retries = 5
+                        max_retries = 50
                         retry_count = 0
                         while retry_count < max_retries:
                             if os.path.exists(corrected_left_eye_path) and os.path.getsize(corrected_left_eye_path) > 0:
@@ -301,7 +301,7 @@ class Eyes:
                                     break
                             else:
                                 print(f"Waiting for corrected left eye image... Retry {retry_count + 1}/{max_retries}")
-                                time.sleep(0.5)  # Wait before retrying
+                                time.sleep(1)  # Wait before retrying
                                 retry_count += 1
 
                         # Similarly, retry for the right eye image
@@ -314,7 +314,7 @@ class Eyes:
                                     break
                             else:
                                 print(f"Waiting for corrected right eye image... Retry {retry_count + 1}/{max_retries}")
-                                time.sleep(0.5)  # Wait before retrying
+                                time.sleep(1)  # Wait before retrying
                                 retry_count += 1
 
                         if self.left_eye_img is not None and self.right_eye_img is not None:

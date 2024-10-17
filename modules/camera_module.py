@@ -11,6 +11,9 @@ import requests
 import pyvirtualcam
 from pyvirtualcam import PixelFormat
 import concurrent.futures
+import base64
+import aiofiles
+import httpx
 
 # Define global variable
 vcam_on = True
@@ -42,7 +45,7 @@ class CameraModule:
         self.lock = threading.Lock()  # Optional lock if you need more control
         self.thread_running = False
         
-        # self.vcam = self.init_vcam(640, 480)  # For webcam
+        self.vcam = self.init_vcam(640, 480)  # For webcam
         # self.vcam = self.init_vcam(960, 540)    # For iphone
 
     def set_active_model(self, active_model):
@@ -101,40 +104,64 @@ class CameraModule:
             raise
 
     def _generate_frames(self):
+        """
+        Continuously capture frames from the camera and process them for encoding 
+        and adding to the frame queue. This function ensures that frames have 
+        monotonically increasing timestamps to avoid timestamp mismatch issues.
+        """
         try:
-            retry_attempts = 3
-            retry_delay = 2  # seconds
-
+            # Initialize variables
+            previous_timestamp = None  # To track the previous frame's timestamp
+            
+            # Loop until the camera is turned off or stop event is set
             while not self.stop_event.is_set():
                 if not self.camera_on or self.camera is None:
+                    # If the camera is not on or is unavailable, wait briefly
                     threading.Event().wait(1)
                     continue
 
+                # Attempt to read a frame from the camera
                 success, frame = self.camera.read()
                 if not success:
                     logging.error("Failed to read frame from camera")
-                    continue
+                    continue  # If reading fails, retry in the next loop iteration
 
-                # Add logging for frame timestamp
-                timestamp = time.time()
-                logging.debug(f"Captured frame at timestamp: {timestamp}")
+                # Get the current timestamp
+                current_timestamp = time.time()
 
+                # Ensure the current frame has a monotonically increasing timestamp
+                if previous_timestamp is not None and current_timestamp <= previous_timestamp:
+                    logging.warning(f"Non-monotonic timestamp detected: {current_timestamp} <= {previous_timestamp}. Skipping frame.")
+                    continue  # Skip the current frame if the timestamp is not valid
+
+                # Update the previous timestamp after a successful frame read
+                previous_timestamp = current_timestamp
+
+                # Log the successful frame capture with the corresponding timestamp
+                logging.debug(f"Captured frame at timestamp: {current_timestamp}")
+
+                # Rotate the frame if the device requires it (e.g., for specific cameras)
                 if self.device_nr == 2:
                     frame = cv2.rotate(frame, cv2.ROTATE_180)
-                    
+
+                # Encode the frame as a JPEG image
                 ret, buffer = cv2.imencode('.jpg', frame)
                 if not ret:
                     logging.error("Failed to encode frame to JPEG")
-                    continue
+                    continue  # If encoding fails, retry with the next frame
 
+                # Convert the encoded image to bytes and add it to the frame queue
                 frame_bytes = buffer.tobytes()
                 self.frame_queue.put(frame_bytes)
 
-                # Update latest frame
+                # Update the latest frame with the current one for future reference
                 self.latest_frame = frame
+
         except Exception as e:
+            # Log any errors that occur during frame generation
             logging.error(f"Error in _generate_frames: {e}")
             raise
+
 
     def generate_frames(self, stream):
         try:
@@ -295,77 +322,81 @@ class CameraModule:
         # Start a new thread to generate the eye images without blocking
         threading.Thread(target=self._generate_eye_images, args=(frame,), daemon=True).start()
 
-    def _generate_eye_images(self, frame): 
+    def _generate_eye_images(self, frame):
         try:
-            time.sleep(10)
             start_time = time.time()
             print("[INFO] Starting image generation for both eyes...")
 
             # Process left eye
+            print("[INFO] Extracting left eye region...")
             left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
-            left_eye_image_path = os.path.join('INPUT_EYES', 'left_eye.jpg')
+            left_eye_image_data = None
             if left_eye_frame is not None and left_eye_frame.size != 0:
-                cv2.imwrite(left_eye_image_path, left_eye_frame)
+                _, left_eye_image_data = cv2.imencode('.jpg', left_eye_frame)
             else:
                 logging.warning("No left eye region found")
-
+            
             # Process right eye
+            print("[INFO] Extracting right eye region...")
             right_eye_frame = self.eyes_processor.get_right_eye_region(frame, False)
-            right_eye_image_path = os.path.join('INPUT_EYES', 'right_eye.jpg')
+            right_eye_image_data = None
             if right_eye_frame is not None and right_eye_frame.size != 0:
-                cv2.imwrite(right_eye_image_path, right_eye_frame)
+                _, right_eye_image_data = cv2.imencode('.jpg', right_eye_frame)
             else:
                 logging.warning("No right eye region found")
-
+            
             # Check if both eyes were found
-            if os.path.exists(left_eye_image_path) and os.path.exists(right_eye_image_path):
-                print("[INFO] Sending both eye images to http://192.168.0.58:8021/generate_image/")
-                
-                # Opening the files outside the with block to avoid early closure
-                left_eye_img_file = open(left_eye_image_path, "rb")
-                right_eye_img_file = open(right_eye_image_path, "rb")
-                
+            if left_eye_image_data is not None and right_eye_image_data is not None:
+                print("[INFO] Sending both eye images to /generate_image/")
+
+                # Convert image data to bytes and prepare for sending
                 files = {
-                    "left_eye": left_eye_img_file,
-                    "right_eye": right_eye_img_file
+                    "left_eye": ("left_eye.jpg", left_eye_image_data.tobytes(), "image/jpeg"),
+                    "right_eye": ("right_eye.jpg", right_eye_image_data.tobytes(), "image/jpeg")
                 }
-                response_start_time = time.time()
-                corrected_eye_response = requests.post("http://192.168.0.58:8021/generate_image/", files=files)
-                response_time = time.time() - response_start_time
-                print(f"[INFO] Response received for both eyes in {response_time:.2f} seconds.")
 
-                # Close the files after the request
-                left_eye_img_file.close()
-                right_eye_img_file.close()
+                try:
+                    # Make the POST request synchronously using requests
+                    response_start_time = time.time()
+                    corrected_eye_response = requests.post("http://192.168.0.58:8021/generate_image/", files=files)
+                    response_time = time.time() - response_start_time
+                    print(f"[INFO] Response received for both eyes in {response_time:.2f} seconds.")
 
-                if corrected_eye_response.status_code == 200:
-                    # Parse the JSON response to get the file paths
-                    corrected_images = corrected_eye_response.json()
+                    # Check if the response is successful
+                    if corrected_eye_response.status_code == 200:
+                        corrected_images = corrected_eye_response.json()
 
-                    output_left_eye_image_path = corrected_images["left_eye"]
-                    output_right_eye_image_path = corrected_images["right_eye"]
+                        # Ensure directory for saving images exists
+                        if not os.path.exists('generated_images'):
+                            os.makedirs('generated_images')
 
-                    print(f"[SUCCESS] Corrected eye images available at {output_left_eye_image_path} and {output_right_eye_image_path}.")
-                    total_time = time.time() - start_time
-                    print(f"[INFO] Total time taken for both eyes image processing: {total_time:.2f} seconds.")
+                        # Save the corrected images
+                        with open('generated_images/left_eye.jpg', 'wb') as f:
+                            f.write(base64.b64decode(corrected_images["left_eye"]))
+                        with open('generated_images/right_eye.jpg', 'wb') as f:
+                            f.write(base64.b64decode(corrected_images["right_eye"]))
 
-                    # Mark the thread as no longer running
-                    with self.lock:
+                        print("[SUCCESS] Corrected eye images saved locally.")
                         self.thread_running = False
-
-                    return output_left_eye_image_path, output_right_eye_image_path
-                else:
-                    logging.error(f"[ERROR] Failed to correct eye images. HTTP Status: {corrected_eye_response.status_code}")
+                    else:
+                        logging.error(f"[ERROR] Failed to correct eye images. HTTP Status: {corrected_eye_response.status_code}")
+                except requests.RequestException as e:
+                    logging.error(f"[ERROR] HTTP request failed: {str(e)}")
             else:
                 logging.warning("Either left or right eye image was not found.")
-            return None, None
 
+            # Print time taken for entire operation
+            total_time = time.time() - start_time
+            print(f"[INFO] Total time taken for eye image generation: {total_time:.2f} seconds.")
+
+            return None, None
         except Exception as e:
-            logging.error(f"[ERROR] Error generating eye images: {e}")
-            # Mark the thread as no longer running in case of error
+            logging.error(f"[ERROR] Exception occurred during image processing: {str(e)}")
             with self.lock:
                 self.thread_running = False
             return None, None
+
+
 
 
 
