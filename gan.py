@@ -1,30 +1,45 @@
+# FastAPI imports
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
-from fastapi.responses import JSONResponse
-from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi import BackgroundTasks
+
+# Pydantic for data validation
 from pydantic import BaseModel
+
+# Custom module imports
 from modules.eyes_gan_dataset import EYES_GAN_DATASET
 from modules.eyes_gan_generator import EYES_GAN_GENERATOR
 from modules.eyes_gan_discriminator import EYES_GAN_DISCRIMINATOR
 from modules.eyes_gan import EYES_GAN
 from modules.split_datasets import split_folders
+
+# Standard library imports
 import os
 import base64
-import tensorflow as tf
-import uvicorn
 import zipfile
 import shutil
 import logging
 import asyncio
 import threading
 import glob
+
+# Machine learning and deep learning libraries
+import tensorflow as tf
 import torch
 from ultralytics import SAM
+
+# Numerical and image processing libraries
 import numpy as np
 import cv2
+from PIL import Image
+
+# Asynchronous and multi-threading utilities
 from concurrent.futures import ThreadPoolExecutor
-import threading
-import os
+
+# Uvicorn for running FastAPI server
+import uvicorn
+
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 
@@ -184,47 +199,68 @@ async def restore_checkpoint(request: RestoreCheckpointRequest):
     return {"status": "Checkpoint restored successfully."}
 
 @app.post("/generate_image/")
-async def generate_image(left_eye: UploadFile = File(...), right_eye: UploadFile = File(...)):
-    """
-    Generate images using the loaded EYES_GAN model for both eyes.
-    
-    Args:
-        left_eye: Uploaded left eye image file.
-        right_eye: Uploaded right eye image file.
-    
-    Returns:
-        JSON containing the paths of the corrected images for both eyes.
-    """
+def generate_image(left_eye: UploadFile = File(...), right_eye: UploadFile = File(...)):
     global eyes_gan_left, eyes_gan_right
 
     if eyes_gan_left is None or eyes_gan_right is None:
+        logging.error("Model not loaded. Call /load_model/ first.")
         return {"error": "Model not loaded. Call /load_model/ first."}
 
-    # Read the uploaded left and right eye images
-    left_img = await read_image(left_eye)
-    right_img = await read_image(right_eye)
+    try:
+        # Read the uploaded left and right eye images synchronously
+        print("[INFO] Reading uploaded left and right eye images...")
+        left_img = read_image_sync(left_eye)
+        right_img = read_image_sync(right_eye)
 
-    left_img = tf.expand_dims(left_img, axis=0)
-    right_img = tf.expand_dims(right_img, axis=0)
+        # Expand dimensions for model input
+        left_img = tf.expand_dims(left_img, axis=0)
+        right_img = tf.expand_dims(right_img, axis=0)
 
-    # Generate the images for both eyes
-    output_left_filepath = os.path.join("generated_images", left_eye.filename)
-    output_right_filepath = os.path.join("generated_images", right_eye.filename)
+        # Save the expanded left and right images to INPUT_EYES folder
+        input_left_eye_path = os.path.join("INPUT_EYES", "left_eye.jpg")
+        input_right_eye_path = os.path.join("INPUT_EYES", "right_eye.jpg")
 
-    await eyes_gan_left.predict(left_img, save_path=output_left_filepath)
-    await eyes_gan_right.predict(right_img, save_path=output_right_filepath)
+        # Encode the images as JPEG to save them
+        left_img_encoded = tf.io.encode_jpeg(tf.squeeze(left_img, axis=0))
+        right_img_encoded = tf.io.encode_jpeg(tf.squeeze(right_img, axis=0))
 
-    # Return the paths of the generated images in a JSON response
-    return {
-        "left_eye": output_left_filepath,
-        "right_eye": output_right_filepath
-    }
+        print(f"[INFO] Saving left eye to {input_left_eye_path} and right eye to {input_right_eye_path}...")
+        # Save the encoded images synchronously
+        with open(input_left_eye_path, "wb") as f_left, open(input_right_eye_path, "wb") as f_right:
+            f_left.write(left_img_encoded.numpy())
+            f_right.write(right_img_encoded.numpy())
+
+        # Continue with generating corrected images
+        output_left_filepath = os.path.join("generated_images", "left_eye.jpg")
+        output_right_filepath = os.path.join("generated_images", "right_eye.jpg")
+
+        print("[INFO] Generating corrected images using the GAN models...")
+        eyes_gan_left.predict(left_img, save_path=output_left_filepath)
+        eyes_gan_right.predict(right_img, save_path=output_right_filepath)
+
+        # Read the generated images back into memory as bytes
+        with open(output_left_filepath, "rb") as left_eye_file, \
+                open(output_right_filepath, "rb") as right_eye_file:
+            left_eye_bytes = left_eye_file.read()
+            right_eye_bytes = right_eye_file.read()
+
+        print("[SUCCESS] Corrected eye images generated and read back into memory.")
+
+        # Return the images in base64 encoding for the client
+        return {
+            "left_eye": base64.b64encode(left_eye_bytes).decode(),
+            "right_eye": base64.b64encode(right_eye_bytes).decode()
+        }
+
+    except Exception as e:
+        logging.error(f"[ERROR] An error occurred during image generation: {str(e)}")
+        return {"error": str(e)}
 
 
 
-async def read_image(file: UploadFile):
+def read_image_sync(file: UploadFile):
     """
-    Read and decode the uploaded image file.
+    Read and decode the uploaded image file synchronously.
     
     This helper function reads the contents of an uploaded image file and 
     decodes it into a tensor.
@@ -235,8 +271,14 @@ async def read_image(file: UploadFile):
     Returns:
         A decoded image tensor.
     """
-    contents = await file.read()
-    return tf.image.decode_image(contents, channels=3)
+    # Read the file contents synchronously
+    contents = file.file.read()  # This reads the file as bytes
+    
+    # Decode the image using TensorFlow's decode_image function
+    image_tensor = tf.image.decode_image(contents, channels=3)
+    
+    return image_tensor
+
 
 
 @app.post("/save_dataset_image")
@@ -270,7 +312,7 @@ async def train(request: TrainRequest):
         logging.debug(f"Splitting dataset at: {ACTIVE_DATASET_DIRECTORY}")
         split_folders(ACTIVE_DATASET_DIRECTORY)
         logging.debug(f"Loading images...")
-        await asyncio.sleep(20)
+        await asyncio.sleep(80)
         logging.debug(f"Dataset split successfully!")
 
     eyes_gan_dataset = EYES_GAN_DATASET(dataset_path=ACTIVE_DATASET_DIRECTORY, debug=True)
@@ -370,7 +412,7 @@ class GetCheckpointImageRequest(BaseModel):
 async def get_checkpoint_image(request: GetCheckpointImageRequest):
     global epoch_count, prev_progress, eyes_gan_left
     
-    base_path = os.path.join("models", request.checkpoint_image_model_name +'_left', "image_checkpoints")
+    base_path = os.path.join("models", request.checkpoint_image_model_name + '_left', "image_checkpoints")
     print(f"INFO: Starting get_checkpoint_image function")
     print(f"My epoch count: {epoch_count}, base path: {base_path}")
     
@@ -381,34 +423,36 @@ async def get_checkpoint_image(request: GetCheckpointImageRequest):
         f"image_predicted_at_epoch_{epoch_count}_step_*.png"
     ]
 
-    max_retries = 200
-    retries = max_retries
     progress = 0
-    print('DEBUG: Trying checkpoints with max retries:', max_retries)
+    print('DEBUG: Checking for checkpoints')
     
-    while retries > 0 and progress < 100 and epoch_count+1<EPOCHS:
-        try:
-            matched_files = []
-            for pattern in patterns:
-                print(f"DEBUG: Looking for files with pattern: {pattern}")
-                matched_files.extend(glob.glob(os.path.join(base_path, pattern)))
+    try:
+        matched_files = []
+        for pattern in patterns:
+            print(f"DEBUG: Looking for files with pattern: {pattern}")
+            matched_files.extend(glob.glob(os.path.join(base_path, pattern)))
 
-            if matched_files:
-                print(f"DEBUG: Found matched files: {matched_files}")
-                
-                images_content = {}
+        if matched_files:
+            print(f"DEBUG: Found matched files: {matched_files}")
+            
+            images_content = {}
+            
+            # Ensure epoch_count is within the valid range for the lists
+            if epoch_count < len(eyes_gan_left.progress) and \
+               epoch_count < len(eyes_gan_left.gen_loss) and \
+               epoch_count < len(eyes_gan_left.disc_loss):
+               
                 progress = eyes_gan_left.progress[epoch_count]
+                gen_loss = eyes_gan_left.gen_loss[epoch_count]
+                disc_loss = eyes_gan_left.disc_loss[epoch_count]
+                
                 print(f"DEBUG: Current progress: {progress}, Previous progress: {prev_progress}")
                 
                 if prev_progress == progress:
-                    print(f"DEBUG: Progress has not changed, retrying... (retries left: {retries})")
-                    retries = max_retries  # Reset the retries counter
-                    continue  # Start the loop again
-
+                    print(f"DEBUG: Progress has not changed.")
+                    return {"error": "Progress has not advanced"}
+                
                 prev_progress = progress  # Update the previous progress
-                gen_loss = eyes_gan_left.gen_loss[epoch_count]
-                disc_loss = eyes_gan_left.disc_loss[epoch_count]
-                print(f"DEBUG: Generator Loss: {gen_loss}, Discriminator Loss: {disc_loss}")
 
                 for file_path in matched_files:
                     print(f"DEBUG: Processing file: {file_path}")
@@ -418,6 +462,7 @@ async def get_checkpoint_image(request: GetCheckpointImageRequest):
 
                 epoch_count += 1
                 print(f'DEBUG: Sent Checkpoint Image for epoch {epoch_count}, progress {progress}')
+                
                 return {
                     "images": images_content,
                     "progress": int(progress),
@@ -425,24 +470,25 @@ async def get_checkpoint_image(request: GetCheckpointImageRequest):
                     "generator_loss": str(gen_loss.numpy()),
                     "discriminator_loss": str(disc_loss.numpy())
                 }
-                
-        except Exception as e:
-            print(f"ERROR: Exception occurred: {e}")
-            await asyncio.sleep(1)
-            continue
 
-        print(f'WARN: Retrying in 1 second... (retries left: {retries})')
-        await asyncio.sleep(1)
-        retries -= 1
+            else:
+                print(f"ERROR: epoch_count {epoch_count} is out of bounds for progress/gen_loss/disc_loss")
+                return {"error": "Epoch count out of range"}
 
-        return {
-            "images": '',
-            "progress": int(100),
-            "epoch_count": EPOCHS,
-            "generator_loss": 0,
-            "discriminator_loss": 0
-            }
-    return {"error": "File not found or error occurred after max retries"}
+    except Exception as e:
+        print(f"ERROR: Exception occurred: {e}")
+        return {"error": str(e)}
+
+    # Return if no files are found or if progress has completed
+    return {
+        "images": '',
+        "progress": int(100),
+        "epoch_count": EPOCHS,
+        "generator_loss": 0,
+        "discriminator_loss": 0
+    }
+
+
 
     
 

@@ -102,7 +102,7 @@ class EYES_GAN_DATASET:
         if self.DEBUG:
             print(f"Loading and processing train images: {input_image_file}, {target_image_file}")
         input_image, real_image = self.load(input_image_file, target_image_file)
-        input_image, real_image = self.random_jitter(input_image, real_image)
+        # input_image, real_image = self.random_jitter(input_image, real_image)
         input_image, real_image = self.normalize(input_image, real_image)
 
         return input_image, real_image

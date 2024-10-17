@@ -61,33 +61,57 @@ class EYES_GAN:
     async def train_step(self, input_image, target, step):
         return await asyncio.to_thread(self._run_train_step, input_image, target, step)
 
-    def _run_train_step(self, input_image, target, step):
-        with tf.device(self.device):
-            with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-                gen_output = self.generator.generator(input_image, training=True)
-                gen_output = tf.image.resize(gen_output, (24, 50))
+    def _run_train_step(self, input_image, target, step, retry_limit=3):
+        retry_count = 0
+        while retry_count < retry_limit:
+            try:
+                # Start gradient tapes for generator and discriminator
+                with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+                    # Generator forward pass
+                    gen_output = self.generator.generator(input_image, training=True)
+                    
+                    # Resize generator output to the desired shape (24, 50)
+                    gen_output = tf.image.resize(gen_output, (24, 50))
 
-                disc_real_output = self.discriminator.discriminator([input_image, target], training=True)
-                disc_generated_output = self.discriminator.discriminator([input_image, gen_output], training=True)
+                    # Discriminator forward pass for real and generated images
+                    disc_real_output = self.discriminator.discriminator([input_image, target], training=True)
+                    disc_generated_output = self.discriminator.discriminator([input_image, gen_output], training=True)
 
-                gen_total_loss, gen_gan_loss, gen_l1_loss = self.generator.generator_loss(
-                    disc_generated_output, gen_output, target)
-                disc_loss = self.discriminator.discriminator_loss(
-                    disc_real_output, disc_generated_output, tf.keras.losses.BinaryCrossentropy(from_logits=True))
+                    # Compute losses for generator and discriminator
+                    gen_total_loss, gen_gan_loss, gen_l1_loss = self.generator.generator_loss(
+                        disc_generated_output, gen_output, target)
+                    disc_loss = self.discriminator.discriminator_loss(
+                        disc_real_output, disc_generated_output, tf.keras.losses.BinaryCrossentropy(from_logits=True))
 
-            generator_gradients = gen_tape.gradient(gen_total_loss, self.generator.generator.trainable_variables)
-            discriminator_gradients = disc_tape.gradient(disc_loss, self.discriminator.discriminator.trainable_variables)
+                # Compute gradients for generator and discriminator
+                generator_gradients = gen_tape.gradient(gen_total_loss, self.generator.generator.trainable_variables)
+                discriminator_gradients = disc_tape.gradient(disc_loss, self.discriminator.discriminator.trainable_variables)
 
-            self.generator_optimizer.apply_gradients(zip(generator_gradients, self.generator.generator.trainable_variables))
-            self.discriminator_optimizer.apply_gradients(zip(discriminator_gradients, self.discriminator.discriminator.trainable_variables))
+                # Apply gradients to update model parameters
+                self.generator_optimizer.apply_gradients(zip(generator_gradients, self.generator.generator.trainable_variables))
+                self.discriminator_optimizer.apply_gradients(zip(discriminator_gradients, self.discriminator.discriminator.trainable_variables))
 
-            with self.summary_writer.as_default():
-                tf.summary.scalar('gen_total_loss', gen_total_loss, step=step // 1000)
-                tf.summary.scalar('gen_gan_loss', gen_gan_loss, step=step // 1000)
-                tf.summary.scalar('gen_l1_loss', gen_l1_loss, step=step // 1000)
-                tf.summary.scalar('disc_loss', disc_loss, step=step // 1000)
+                # Write to summary logs (for TensorBoard)
+                with self.summary_writer.as_default():
+                    tf.summary.scalar('gen_total_loss', gen_total_loss, step=step // 1000)
+                    tf.summary.scalar('gen_gan_loss', gen_gan_loss, step=step // 1000)
+                    tf.summary.scalar('gen_l1_loss', gen_l1_loss, step=step // 1000)
+                    tf.summary.scalar('disc_loss', disc_loss, step=step // 1000)
 
-        return gen_total_loss, gen_gan_loss, gen_l1_loss, disc_loss
+                return gen_total_loss, gen_gan_loss, gen_l1_loss, disc_loss
+
+            except tf.errors.OutOfRangeError as e:
+                print(f"OutOfRangeError occurred at step {step}, retrying... (Attempt {retry_count+1}/{retry_limit})")
+                retry_count += 1
+                if retry_count >= retry_limit:
+                    print("Exceeded retry limit, raising the error.")
+                    raise e
+
+            except Exception as e:
+                print(f"An unexpected error occurred at step {step}: {e}")
+                raise e
+
+
 
     async def generate_images(self, test_input, tar, save_dir=None, epoch=0, step=0):
         await asyncio.to_thread(self._run_generate_images, test_input, tar, save_dir, epoch, step)
@@ -194,10 +218,10 @@ class EYES_GAN:
                             'disc_loss': f'{disc_total_loss.numpy():.4f}'
                         })
 
-                    if (step) % checkpoint_interval == 0:
-                        self._run_generate_images(test_input=input_image, tar=target, epoch=epoch, step=step)
-                        self.checkpoint.save(file_prefix=self.checkpoint_prefix)
-                        print(f"Checkpoint saved at step {step} of epoch {epoch}")
+                    # if (step) % checkpoint_interval == 0:
+                    #     self._run_generate_images(test_input=input_image, tar=target, epoch=epoch, step=step)
+                    #     self.checkpoint.save(file_prefix=self.checkpoint_prefix)
+                    #     print(f"Checkpoint saved at step {step} of epoch {epoch}")
 
                 self.gen_loss.append(gen_total_loss)
                 self.disc_loss.append(disc_total_loss)
@@ -209,7 +233,8 @@ class EYES_GAN:
                 print("[FIT] DISCRIMINATOR LOSS: ", self.disc_loss[-1].numpy())
                 self._run_generate_images(test_input=input_image, tar=target, epoch=epoch, step=steps_per_epoch)
                 self.checkpoint.save(file_prefix=self.checkpoint_prefix)
-                print(f"Checkpoint saved at the end of epoch {epoch}")
+                print(f"Checkpoint saved at step {step} of epoch {epoch}")
+
 
                 print(f'Time taken for epoch {epoch} is {time.time() - start:.2f} sec\n')
 
