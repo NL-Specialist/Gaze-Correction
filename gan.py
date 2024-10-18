@@ -67,6 +67,7 @@ dataset_exists = False
 device_left = "0"
 device_right = "1"
 
+prev_checkpoint_eye_type = '_left'
 
 # Directories and settings
 DATASETS_DIRECTORY = 'datasets'
@@ -290,30 +291,44 @@ async def save_dataset_image(file: UploadFile = File(...), path: str = Form(...)
     logging.info(f"Saved file to: {save_path}")
     return JSONResponse(content={"message": "File saved successfully"})
 
+import asyncio
+import logging
+from fastapi import HTTPException
+
 class TrainRequest(BaseModel):
     train_model_name: str
     dataset_path: str
     epochs: int
     learning_rate: float
 
-@app.post("/train/")
+@app.post("/train")
 async def train(request: TrainRequest):
-    global eyes_gan_left, eyes_gan_right, model_name, epoch_count, ACTIVE_DATASET_DIRECTORY, EPOCHS, dataset_exists
+    global eyes_gan_left, eyes_gan_right, model_name, epoch_count, ACTIVE_DATASET_DIRECTORY, EPOCHS, dataset_exists, prev_checkpoint_eye_type
 
     model_name = request.train_model_name
-    await load_GAN(model_name)
-    
-    if eyes_gan_left is None or eyes_gan_right is None:
-        raise HTTPException(status_code=400, detail="Model not loaded. Call /load_model/ first.")
-
     ACTIVE_DATASET_DIRECTORY = request.dataset_path
 
     if not dataset_exists:
-        logging.debug(f"Splitting dataset at: {ACTIVE_DATASET_DIRECTORY}")
-        split_folders(ACTIVE_DATASET_DIRECTORY)
+        # Define the path to the 'away' directory
+        away_directory = os.path.join(ACTIVE_DATASET_DIRECTORY, 'away')
+
+        # Count the number of folders in the 'away' directory
+        folder_count = sum([1 for entry in os.scandir(away_directory) if entry.is_dir()])
+
+        # If there are more than 3 folders, perform the split
+        if folder_count > 3:
+            logging.debug(f"Splitting dataset at: {ACTIVE_DATASET_DIRECTORY}")
+            
+            # Run the blocking function in a separate thread using asyncio.to_thread
+            await split_folders(ACTIVE_DATASET_DIRECTORY)
+            
+            logging.debug(f"Dataset split successfully!")
+        else:
+            logging.debug(f"Skipping dataset split as there are {folder_count} folders in the 'away' directory.")
+
         logging.debug(f"Loading images...")
-        await asyncio.sleep(80)
-        logging.debug(f"Dataset split successfully!")
+        # await asyncio.sleep(10)
+        
 
     eyes_gan_dataset = EYES_GAN_DATASET(dataset_path=ACTIVE_DATASET_DIRECTORY, debug=True)
 
@@ -322,29 +337,40 @@ async def train(request: TrainRequest):
 
     EPOCHS = request.epochs
 
-    def train_model_left():
-        eyes_gan_left.fit(
-            model_name + '_left', 
-            train_dataset_left, 
-            test_dataset_left, 
-            epochs=EPOCHS, 
-            learning_rate=request.learning_rate
+    # Wrapping training in separate asyncio threads
+    async def train_model_left():
+        await asyncio.to_thread(
+            eyes_gan_left.fit,
+            model_name + '_left',
+            train_dataset_left,
+            test_dataset_left,
+            EPOCHS,
+            request.learning_rate
         )
 
-    def train_model_right():
-        eyes_gan_right.fit(
-            model_name + '_right', 
-            train_dataset_right, 
-            test_dataset_right, 
-            epochs=EPOCHS, 
-            learning_rate=request.learning_rate
+    async def train_model_right():
+        await asyncio.to_thread(
+            eyes_gan_right.fit,
+            model_name + '_right',
+            train_dataset_right,
+            test_dataset_right,
+            EPOCHS,
+            request.learning_rate
         )
 
-    # Run the training tasks concurrently
-    threading.Thread(target=train_model_left).start()
-    threading.Thread(target=train_model_right).start()
+    await load_GAN(model_name)
+
+    if eyes_gan_left is None or eyes_gan_right is None:
+        raise HTTPException(status_code=400, detail="Model not loaded. Call /load_model/ first.")
+
+    # Schedule both training tasks in the background
+    asyncio.create_task(train_model_left())
+    asyncio.create_task(train_model_right())
+
     epoch_count = 0
-    return {"status": "TRAINING_STARTED"}
+    prev_checkpoint_eye_type = '_left'
+    return {"status": True}
+
 
 
 def generate_initial_test_images(test_dataset):
@@ -410,9 +436,16 @@ class GetCheckpointImageRequest(BaseModel):
 
 @app.post("/get_checkpoint_image/")
 async def get_checkpoint_image(request: GetCheckpointImageRequest):
-    global epoch_count, prev_progress, eyes_gan_left
+    global epoch_count, prev_progress, eyes_gan_left, eyes_gan_right, prev_checkpoint_eye_type
     
-    base_path = os.path.join("models", request.checkpoint_image_model_name + '_left', "image_checkpoints")
+    if prev_checkpoint_eye_type == '_left':
+        prev_checkpoint_eye_type = '_right'
+        gan = eyes_gan_right
+    else: 
+        prev_checkpoint_eye_type = '_left'
+        gan = eyes_gan_left
+        
+    base_path = os.path.join("models", request.checkpoint_image_model_name + prev_checkpoint_eye_type, "image_checkpoints")
     print(f"INFO: Starting get_checkpoint_image function")
     print(f"My epoch count: {epoch_count}, base path: {base_path}")
     
@@ -438,13 +471,21 @@ async def get_checkpoint_image(request: GetCheckpointImageRequest):
             images_content = {}
             
             # Ensure epoch_count is within the valid range for the lists
-            if epoch_count < len(eyes_gan_left.progress) and \
-               epoch_count < len(eyes_gan_left.gen_loss) and \
-               epoch_count < len(eyes_gan_left.disc_loss):
+            if epoch_count < len(gan.progress) and \
+               epoch_count < len(gan.gen_loss) and \
+               epoch_count < len(gan.disc_loss):
                
-                progress = eyes_gan_left.progress[epoch_count]
-                gen_loss = eyes_gan_left.gen_loss[epoch_count]
-                disc_loss = eyes_gan_left.disc_loss[epoch_count]
+                eyes_gan_left_progress = eyes_gan_left.progress[epoch_count]
+                eyes_gan_left_gen_loss = eyes_gan_left.gen_loss[epoch_count]
+                eyes_gan_left_disc_loss = eyes_gan_left.disc_loss[epoch_count]
+                
+                eyes_gan_right_progress = eyes_gan_right.progress[epoch_count]
+                eyes_gan_right_gen_loss = eyes_gan_right.gen_loss[epoch_count]
+                eyes_gan_right_disc_loss = eyes_gan_right.disc_loss[epoch_count]
+                
+                progress = ( (eyes_gan_left_progress +eyes_gan_right_progress)/2)
+                gen_loss = ( (eyes_gan_left_gen_loss+ eyes_gan_right_gen_loss)/2)
+                disc_loss = ( (eyes_gan_left_disc_loss+ eyes_gan_right_disc_loss)/2)
                 
                 print(f"DEBUG: Current progress: {progress}, Previous progress: {prev_progress}")
                 
@@ -483,7 +524,7 @@ async def get_checkpoint_image(request: GetCheckpointImageRequest):
     return {
         "images": '',
         "progress": int(100),
-        "epoch_count": EPOCHS,
+        "epoch_count": epoch_count,
         "generator_loss": 0,
         "discriminator_loss": 0
     }

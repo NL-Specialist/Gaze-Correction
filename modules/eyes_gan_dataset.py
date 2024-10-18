@@ -1,11 +1,17 @@
-import tensorflow as tf
+# Core libraries
 import os
-import pathlib
 import time
 import datetime
+import pathlib
+
+# TensorFlow for deep learning
+import tensorflow as tf
+
+# Data manipulation and visualization libraries
+import pandas as pd
 from matplotlib import pyplot as plt
 from IPython import display
-import pandas as pd
+
 
 class EYES_GAN_DATASET:
     def __init__(self, dataset_path, buffer_size=400, batch_size=1, debug=True):
@@ -116,9 +122,10 @@ class EYES_GAN_DATASET:
 
         return input_image, real_image
 
-    def get_matched_image_paths(self, split, eye_type):
+    def get_image_paths(self, split, eye_type):
         """
-        Get matched pairs of input and target image paths for the given split ('train', 'test', 'validate') and eye_type.
+        Get image paths for the given split ('train', 'test', validate') and eye_type.
+        Order of images should remain the same as they appear.
         """
         input_base_path = os.path.join(self.DATASET_PATH, "away", split)
         target_base_path = os.path.join(self.DATASET_PATH, "at_camera", split)
@@ -135,8 +142,6 @@ class EYES_GAN_DATASET:
         for dir_name in input_dirs:
             input_dir_path = os.path.join(input_base_path, dir_name)
             target_dir_path = os.path.join(target_base_path, dir_name)
-            if not os.path.exists(target_dir_path):
-                continue
 
             # Collect images for the specified eye type
             eyes = []
@@ -151,20 +156,23 @@ class EYES_GAN_DATASET:
                 input_image_path = os.path.join(input_dir_path, eye)
                 target_image_path = os.path.join(target_dir_path, eye)
 
+                # Add input and target paths to their respective lists (no matching required)
                 if os.path.isfile(input_image_path) and os.path.isfile(target_image_path):
                     input_image_paths.append(input_image_path)
                     target_image_paths.append(target_image_path)
                 else:
                     if self.DEBUG:
-                        print(f"Input or target image file does not exist for eye {eye} in directory {dir_name}")
+                        print(f"Skipping input {input_image_path} due to missing target {target_image_path}")
+
+
 
         return input_image_paths, target_image_paths
 
     def prepare_datasets(self, eye_type='left'):
-        # Get matched image paths for each dataset split
-        train_inputs, train_targets = self.get_matched_image_paths('train', eye_type)
-        test_inputs, test_targets = self.get_matched_image_paths('test', eye_type)
-        val_inputs, val_targets = self.get_matched_image_paths('validate', eye_type)
+        # Get image paths for each dataset split
+        train_inputs, train_targets = self.get_image_paths('train', eye_type)
+        test_inputs, test_targets = self.get_image_paths('test', eye_type)
+        val_inputs, val_targets = self.get_image_paths('validate', eye_type)
 
         if self.DEBUG:
             print(f"Total training inputs: {len(train_inputs)}")

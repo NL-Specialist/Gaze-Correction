@@ -1,16 +1,24 @@
+# Core libraries
 import os
-import tensorflow as tf
-import datetime
 import time
-from tqdm import tqdm
-import numpy as np
-import imageio
-import matplotlib.pyplot as plt
+import datetime
 import shutil
 import re
 import asyncio
-from tensorflow.keras.mixed_precision import Policy
-from tensorflow.keras.mixed_precision import set_global_policy
+import threading
+
+# TensorFlow and Keras for deep learning
+import tensorflow as tf
+from tensorflow.keras.mixed_precision import Policy, set_global_policy
+
+# Progress bar display
+from tqdm import tqdm
+
+# Image and plotting libraries
+import numpy as np
+import imageio
+import matplotlib.pyplot as plt
+
 
 # Set mixed precision policy
 policy = Policy('mixed_float16')
@@ -40,9 +48,9 @@ class EYES_GAN:
             self.progress = []
             self.step = 0
 
-    async def predict(self, input_image, save_path='generated_image.png'):
+    def predict(self, input_image, save_path='generated_image.png'):
         # Use asyncio.to_thread() to run the prediction in a non-blocking way
-        return await asyncio.to_thread(self._run_prediction, input_image, save_path)
+        threading.Thread(target=self._run_prediction, args=(input_image,save_path,), daemon=True).start()
 
     def _run_prediction(self, input_image, save_path):
         with tf.device(self.device):
@@ -76,7 +84,7 @@ class EYES_GAN:
                     # Discriminator forward pass for real and generated images
                     disc_real_output = self.discriminator.discriminator([input_image, target], training=True)
                     disc_generated_output = self.discriminator.discriminator([input_image, gen_output], training=True)
-
+                    
                     # Compute losses for generator and discriminator
                     gen_total_loss, gen_gan_loss, gen_l1_loss = self.generator.generator_loss(
                         disc_generated_output, gen_output, target)
