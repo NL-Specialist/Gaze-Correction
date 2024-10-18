@@ -1,19 +1,26 @@
+# Core libraries
+import os
 import time
-import cv2
 import logging
+import base64
 import threading
 import queue
-from modules.eyes import Eyes
-import os
+import concurrent.futures
+
+# Third-party image and video processing libraries
+import cv2
 import numpy as np
-import time
-import requests
 import pyvirtualcam
 from pyvirtualcam import PixelFormat
-import concurrent.futures
-import base64
+
+# Async I/O and HTTP request libraries
 import aiofiles
 import httpx
+import requests
+
+# Custom module for eye processing
+from modules.eyes import Eyes
+
 
 # Define global variable
 vcam_on = True
@@ -168,7 +175,7 @@ class CameraModule:
             while self.camera_on:
                 frame_bytes = self.frame_queue.get()
                 if stream == "live-video-left-and-right-eye":
-                    self.latest_left_and_right_eye_frames = self.get_frame("live-video-left-and-right-eye")
+                    self.latest_left_and_right_eye_frames = self.get_frame(stream="live-video-left-and-right-eye", show_face_mesh=False, classify_gaze=False, draw_rectangles=False, show_eyes=False, show_mouth=False, show_face_outline=False, show_text=False, extract_eyes=False)
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
         except Exception as e:
@@ -206,7 +213,7 @@ class CameraModule:
             logging.error(f"Error in capture_frame_from_queue: {e}")
             raise
 
-    def get_frame(self, stream):
+    def get_frame(self, stream, show_face_mesh, classify_gaze, draw_rectangles, show_eyes, show_mouth, show_face_outline, show_text, extract_eyes):
         try:
             frame = self._get_decoded_frame()
             if frame is None:
@@ -219,10 +226,10 @@ class CameraModule:
                 return self._process_live_video_1_frame(frame)
 
             elif stream == "live-video-left":
-                return self._process_live_video_left_frame(frame)
+                return self._process_live_video_left_frame(frame, show_face_mesh, classify_gaze, draw_rectangles, show_eyes, show_mouth, show_face_outline, show_text)
 
             elif stream == "live-video-right":
-                return self._process_live_video_right_frame_async(self.latest_frame)
+                return self._process_live_video_right_frame_async(self.latest_frame, extract_eyes)
 
             else:
                 logging.error(f"ERROR: Stream name not recognized: {stream}")
@@ -277,15 +284,17 @@ class CameraModule:
         logging.error("Failed to encode processed frame to JPEG")
         return None
 
-    def _process_live_video_left_frame(self, frame):
-        processed_frame = self.eyes_processor.process_frame(frame, show_face_mesh=False, classify_gaze=True, draw_rectangles=False)
+    def _process_live_video_left_frame(self, frame, show_face_mesh, classify_gaze, draw_rectangles, show_eyes, show_mouth, show_face_outline, show_text):
+        # processed_frame = self.eyes_processor.draw_selected_landmarks(
+        #     frame, show_eyes=show_eyes, show_mouth=show_mouth, show_face_outline=show_face_outline, show_text=show_text)
+        processed_frame = self.eyes_processor.process_frame(frame, show_face_mesh=show_face_mesh, classify_gaze=classify_gaze, draw_rectangles=draw_rectangles)
         ret, buffer = cv2.imencode('.jpg', processed_frame)
         if ret:
             return buffer.tobytes()
         logging.error("Failed to encode processed frame to JPEG")
         return None
 
-    def _process_live_video_right_frame_async(self, frame):
+    def _process_live_video_right_frame_async(self, frame, extract_eyes):
         # Check if the active model is enabled and gaze correction is required
         if not self.active_model == 'disabled' and self.eyes_processor.should_correct_gaze:
             print("Active model is enabled and gaze correction is required")
@@ -300,7 +309,7 @@ class CameraModule:
                 print("Thread already running, skipping image generation")
 
             # Always use the latest corrected eye images from the folder
-            frame = self.eyes_processor.correct_gaze(frame)
+            frame = self.eyes_processor.correct_gaze(frame, extract_eyes)
 
         else:
             self.stop_generation()

@@ -21,6 +21,7 @@ import requests
 import base64
 import shutil
 import re
+import stat
 
 # Asynchronous and multi-threading utilities
 from concurrent.futures import ThreadPoolExecutor
@@ -58,6 +59,9 @@ progress = 0  # Global variable to store training progress
 generator_losses = []  # Global list to store generator loss
 discriminator_losses = []  # Global list to store discriminator loss
 dataset_loading_progress = 0
+
+# Calibration
+calibration_progress = {'progress': 0, 'calibration_message': '', 'on': False}
 
 @app.route('/')
 def index():
@@ -290,14 +294,41 @@ def camera_status():
     global camera_state
     return jsonify({"camera_on": camera_state['camera_on']})
 
+stream_settings = {}
+
 @socketio.on('start_video')
 def handle_start_video(data):
+    global stream_settings
     try:
         stream = data.get('stream')
-        print("Stream: ", stream)
+        # Initialize the settings for the stream
+        stream_settings[stream] = {
+            'show_face_mesh': data.get('show_face_mesh'),
+            'classify_gaze': data.get('classify_gaze'),
+            'draw_rectangles': data.get('draw_rectangles'),
+            'show_eyes': data.get('show_eyes'),
+            'show_mouth': data.get('show_mouth'),
+            'show_face_outline': data.get('show_face_outline'),
+            'show_text': data.get('show_text'),
+            'extract_eyes': data.get('extract_eyes')
+        }
         
+        print(f"Stream started: {stream}, with initial settings: {stream_settings[stream]}")
+
         while camera_state['camera_on']:
-            frame = camera_module.get_frame(stream)
+            # Retrieve the current settings
+            settings = stream_settings[stream]
+
+            # Pass the current settings to the get_frame method
+            frame = camera_module.get_frame(stream, 
+                                            settings['show_face_mesh'], 
+                                            settings['classify_gaze'], 
+                                            settings['draw_rectangles'], 
+                                            settings['show_eyes'], 
+                                            settings['show_mouth'], 
+                                            settings['show_face_outline'], 
+                                            settings['show_text'], 
+                                            settings['extract_eyes'])
             
             if frame:
                 if stream == "live-video-left-and-right-eye":
@@ -314,13 +345,36 @@ def handle_start_video(data):
                         'type': stream,
                         'frame': frame
                     })
-
-                
             else:
                 logging.warning("No frame received from get_frame() method")
     
     except Exception as e:
         logging.error(f"Error in start_video: {e}")
+
+
+@socketio.on('update_settings')
+def handle_update_settings(data):
+    global stream_settings
+    try:
+        stream = data.get('stream')
+        if stream in stream_settings:
+            # Update the settings for the stream
+            stream_settings[stream].update({
+                'show_face_mesh': data.get('show_face_mesh'),
+                'classify_gaze': data.get('classify_gaze'),
+                'draw_rectangles': data.get('draw_rectangles'),
+                'show_eyes': data.get('show_eyes'),
+                'show_mouth': data.get('show_mouth'),
+                'show_face_outline': data.get('show_face_outline'),
+                'show_text': data.get('show_text'),
+                'extract_eyes': data.get('extract_eyes')
+            })
+            print(f"Updated settings for stream {stream}: {stream_settings[stream]}")
+        else:
+            print(f"Stream {stream} is not active. Cannot update settings.")
+    
+    except Exception as e:
+        logging.error(f"Error in update_settings: {e}")
 
 @app.route('/datasets/<path:filename>')
 def serve_dataset_files(filename):
@@ -373,6 +427,9 @@ def clear_existing_training(model_name):
         for filename in os.listdir(model_path):
             file_path = os.path.join(model_path, filename)
             try:
+                # Change file permission to ensure it can be deleted
+                os.chmod(file_path, stat.S_IWRITE)
+                
                 if os.path.isfile(file_path) or os.path.islink(file_path):
                     os.unlink(file_path)  # Remove the file or link
                 elif os.path.isdir(file_path):
@@ -420,7 +477,8 @@ def send_files_concurrently(folder_path, dataset_name):
     time.sleep(5)
     print("[INFO] All files sent successfully.")
 
-    threading.Thread(target=start_calibration_training, args=(folder_path,)).start()
+    if calibration_progress['on'] == True:
+        threading.Thread(target=start_calibration_training, args=(folder_path,)).start()
     # dataset_loading_progress = 100  # Set progress to 100% after all files are sent
 
 
@@ -571,10 +629,21 @@ def start_training():
             return jsonify({"error": "Invalid input. 'dataset_path', 'epochs', and 'learning_rate' are required."}), 400
 
         # Start training if model loading was successful
-        try:
-            response = requests.post("http://192.168.0.58:8021/train", json={'train_model_name': model_name, 'dataset_path': folder_path, 'epochs': total_epochs, 'learning_rate': learning_rate})
-            response.raise_for_status()
-            print(f"[INFO] Training started successfully: {response.status_code}")
+        try:    
+            response = requests.post("http://192.168.0.58:8021/train", json={
+                'train_model_name': model_name, 
+                'dataset_path': folder_path, 
+                'epochs': total_epochs, 
+                'learning_rate': learning_rate
+            })
+
+            # Use status_code instead of status
+            response_data = response.json()
+            if response_data.get("status") == True:  
+                print(f"[INFO] Training started successfully, status code: {response.status_code}")
+            else:
+                print(f"[INFO] Training FAILED, status code: {response.status_code}")
+
         except requests.RequestException as e:
             return jsonify({"error": "Failed to start training.", "details": str(e)}), 500
 
@@ -583,6 +652,7 @@ def start_training():
     except Exception as e:
         print(f"[ERROR] An unexpected error occurred: {str(e)}")
         return jsonify({"error": "An unexpected error occurred.", "details": str(e)}), 500
+
 
 
 
@@ -608,9 +678,9 @@ def training_progress():
                 if input_image_path and target_image_path and predicted_image_path:
                     yield f"data: {json.dumps({'progress': progress, 'epoch_count': epoch_count, 'total_epochs': total_epochs, 'input_image': input_image_path, 'target_image': target_image_path,'predicted_image': predicted_image_path, 'generator_loss': generator_losses[-1], 'discriminator_loss': discriminator_losses[-1]})}\n\n".encode('utf-8')
                 else:
-                    yield f"data: {json.dumps({'error': 'Failed to get required checkpoint images'})}\n\n".encode('utf-8')
+                    yield f"data: {json.dumps({'error': 'Not all checkpoint image paths found, trying again...'})}\n\n".encode('utf-8')
             else:
-                yield f"data: {json.dumps({'error': 'Failed to get checkpoint images'})}\n\n".encode('utf-8')
+                yield f"data: {json.dumps({'error': 'No new checkpoint images, trying again...'})}\n\n".encode('utf-8')
 
         print("[INFO] Training completed successfully!")    
         yield f"data: {json.dumps({'progress': progress})}\n\n".encode('utf-8')
@@ -681,9 +751,6 @@ def get_checkpoint_images(checkpoint_model_name='Auto', timeout=600):
         return None, None
 
 # MODEL CALIBRATION
-
-calibration_progress = {'progress': 0, 'calibration_message': ''}
-
 def start_auto_training():
     global calibration_progress, dataset_loading_progress, model_name, folder_path
     calibration_progress['calibration_message'] = 'Sending dataset to cloud GPU'
@@ -856,7 +923,7 @@ def delete_auto_dataset():
 def start_retraining():
     global calibration_progress
     # Reset progress
-    calibration_progress = {'progress': 0}
+    calibration_progress = {'progress': 0, 'calibration_message': 'Starting calibration procedure', 'on': True}
 
     # Start the retraining simulation in a separate thread
     retraining_thread = Thread(target=start_auto_training)

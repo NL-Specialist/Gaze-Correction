@@ -1,14 +1,26 @@
-import cv2
-import mediapipe as mp
-from modules.gaze_classification import GazeClassifier
-from ultralytics import SAM
-import numpy as np
-import dlib
-import logging
+# Core libraries
 import os
-import requests
-from skimage.exposure import match_histograms
 import time
+import logging
+
+# Third-party image processing libraries
+import cv2
+import numpy as np
+from skimage.exposure import match_histograms
+
+# Face and eye detection libraries
+import dlib
+import mediapipe as mp
+
+# Gaze classification module
+from modules.gaze_classification import GazeClassifier
+
+# SAM (Segment Anything Model) library for advanced image segmentation
+from ultralytics import SAM
+
+# HTTP requests library
+import requests
+
 
 class Eyes:
     def __init__(self):
@@ -263,7 +275,7 @@ class Eyes:
             logging.error(f"Error in draw_selected_landmarks: {e}")
             raise
 
-    def correct_gaze(self, frame, corrected_left_eye_path=None, corrected_right_eye_path=None):
+    def correct_gaze(self, frame, corrected_left_eye_path=None, corrected_right_eye_path=None, extract_eyes=True):
         try:
             print("Starting gaze correction")
 
@@ -274,6 +286,7 @@ class Eyes:
             # Save the original frame for away gaze
             dest_image_path = 'my_frame_away.jpg'
             cv2.imwrite(dest_image_path, frame)
+            # dest_frame = frame
             print(f"Saved frame to {dest_image_path}")
 
             if self.should_correct_gaze:
@@ -324,13 +337,15 @@ class Eyes:
                             self.overlay_image(frame, self.right_eye_bbox, self.right_eye_img)
                             print("Right eye overlaid on the frame")
 
-                            # Save the corrected frame
-                            image_path = 'my_frame.jpg'
-                            cv2.imwrite(image_path, frame)
-                            print(f"Corrected frame saved to {image_path}")
+                            # # Save the corrected frame
+                            # image_path = 'my_frame.jpg'
+                            # cv2.imwrite(image_path, frame)
+                            # print(f"Corrected frame saved to {image_path}")
 
                             # Extract the final corrected image
-                            corrected_image = extract(image_path=image_path, dest_image_path=dest_image_path)
+                            if extract_eyes: 
+                                corrected_image = extract(frame=frame, dest_image_path=dest_image_path)
+                            else: corrected_image = frame
                             print("Final corrected image extracted")
                         else:
                             logging.error("Failed to load one or both corrected eye images.")
@@ -521,10 +536,12 @@ def detect_green_contours(image, padding=1):
     return padded_contours, green_mask
 
 # Extra eye regions only
-def extract(image_path='my_frame.jpg', dest_image_path='sam_test_image_away.jpg'):
-    # Load input and destination images
-    image = load_image(image_path)
-    copy_image = load_image(image_path)
+def extract(frame, dest_image_path='sam_test_image_away.jpg'):
+    # Assume 'frame' is the input image already loaded
+    image = frame
+    copy_image = np.copy(image)  # Create a copy of the input frame
+
+    # Load destination image (since this is still provided by path)
     dest_image = load_image(dest_image_path)
     copy_dest_image = load_image(dest_image_path)
 

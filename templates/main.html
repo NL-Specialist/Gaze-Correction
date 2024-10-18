@@ -36,7 +36,49 @@
                 <div id="right-panel" class="panel">
                     <img id="live-video-right" alt="Live Video Right">
                 </div>
-                <div id="statusMessage"></div>
+                <div class="performance-button-container">
+                    <div class="performance-button-group left">
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/facemesh.png'); margin-top:15px ; background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Facemesh</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button">👄</button>
+                            <span class="button-description">Mouth Grid</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button">👀</button>
+                            <span class="button-description">Eye Grids</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button">📍</button>
+                            <span class="button-description">Grid Labels</span>
+                        </div>
+                    </div>
+                
+                    <div id="statusMessage">Status</div>
+                
+                    <div class="performance-button-group right">
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/eyes.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Classify Gaze</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/out.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Head Outline</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/rec.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Eye Bounding Boxes</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/eye.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Eye Extraction</span>
+                        </div>
+                    </div>
+                </div>
+                
+                
             </div>
             <div id="Train" class="tabcontent">
                 <div class="training-section">
