@@ -36,7 +36,49 @@
                 <div id="right-panel" class="panel">
                     <img id="live-video-right" alt="Live Video Right">
                 </div>
-                <div id="statusMessage"></div>
+                <div class="performance-button-container">
+                    <div class="performance-button-group left">
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/facemesh.png'); margin-top:12px ; background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Facemesh</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/mouth_icon.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Mouth Grid</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/eyes.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Eye Grids</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/grid\ labels.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Grid Labels</span>
+                        </div>
+                    </div>
+                
+                    <div id="statusMessage">Status</div>
+                
+                    <div class="performance-button-group right">
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/eye_grids.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Classify Gaze</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/out.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Head Outline</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/rec.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Eye Bounding Boxes</span>
+                        </div>
+                        <div class="button-wrapper">
+                            <button class="performance-button" style="background-image: url('/static/eye.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
+                            <span class="button-description">Eye Extraction</span>
+                        </div>
+                    </div>
+                </div>
+                
+                
             </div>
             <div id="Train" class="tabcontent">
                 <div class="training-section">
@@ -70,7 +112,7 @@
                         <div class="training-parameter-block">
                             <h3>Training Inputs</h3>
                             <label for="training-tab-model-name">Model Name:</label>
-                            <input type="text" id="training-tab-model-name" value="Test2_Model" placeholder="Enter Model Name" required>
+                            <input type="text" id="training-tab-model-name" value="Auto" placeholder="Enter Model Name" required>
                             <label for="training-tab-select-dataset">Select Dataset:</label>
                             <select id="training-tab-select-dataset" required>
                                 <option value="" disabled selected>Select Dataset</option>
@@ -79,7 +121,7 @@
                         <div class="training-parameter-block">
                             <h3>Training Parameters</h3>
                             <label for="training-tab-epochs">Epochs:</label>
-                            <input type="number" id="training-tab-epochs" value="4" placeholder="Enter Number of Epochs" min="1" max="1000" required>
+                            <input type="number" id="training-tab-epochs" value="10" placeholder="Enter Number of Epochs" min="1" max="1000" required>
                             <label for="training-tab-learning-rate">Learning Rate:</label>
                             <input type="number" id="training-tab-learning-rate" value="0.0002" placeholder="Enter Learning Rate" step="0.0001" min="0.0001" max="1" required>
                         </div>

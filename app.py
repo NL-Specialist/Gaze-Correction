@@ -1,11 +1,17 @@
+# Flask and Flask-SocketIO imports
+from flask import Flask, render_template, jsonify, request, Response, send_file, send_from_directory
+from flask_socketio import SocketIO, emit
+
+# Custom module imports
+from modules.camera_module import CameraModule
+
+# Environment variable handling
+from dotenv import load_dotenv
+
+# Standard library imports
 import os
 import logging
 import threading
-from flask import Flask, render_template, jsonify, request, Response, send_file
-from flask_socketio import SocketIO, emit
-from flask import send_from_directory
-from modules.camera_module import CameraModule
-from dotenv import load_dotenv
 import zipfile
 import io
 import time
@@ -13,10 +19,14 @@ import json
 import random
 import requests
 import base64
-from concurrent.futures import ThreadPoolExecutor
 import shutil
 import re
+import stat
+
+# Asynchronous and multi-threading utilities
+from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
+
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -49,6 +59,9 @@ progress = 0  # Global variable to store training progress
 generator_losses = []  # Global list to store generator loss
 discriminator_losses = []  # Global list to store discriminator loss
 dataset_loading_progress = 0
+
+# Calibration
+calibration_progress = {'progress': 0, 'calibration_message': '', 'on': False}
 
 @app.route('/')
 def index():
@@ -89,15 +102,18 @@ def set_correction_model():
         # Set the selected model 
         ACTIVE_MODEL = selected_model 
         print(f"Selected model: {selected_model}")
-
+        
+        start_time = time.time()
         load_model_response = requests.post("http://192.168.0.58:8021/load_model/", json={"load_model_name":ACTIVE_MODEL})
         if load_model_response.status_code == 200:
+            print(f"TOTAL TIME TO LOAD MODEL: {time.time() - start_time:.4f} seconds")
             load_model_data = load_model_response.json()
             checkpoint_list = load_model_data.get('checkpoint_list', [])
 
             if not selected_model == 'disabled':
                 restore_checkpoint_response = requests.post("http://192.168.0.58:8021/restore_checkpoint/", json={"checkpoint_nr":-1})
                 if restore_checkpoint_response.status_code == 200:
+                    # time.sleep(5)
                     camera_module.set_active_model(ACTIVE_MODEL)
                 else:
                     print(f"[ERROR] Restoring checkpoint failed with status code {restore_checkpoint_response.status_code}, response text: {restore_checkpoint_response.text}")
@@ -129,10 +145,15 @@ def get_datasets():
     models = [entry for entry in model_entries if os.path.isdir(os.path.join(MODELS_PATH, entry))]
     
     # Create a list of dictionaries for the datasets
-    models_list = [{'value': 'Auto', 'text': 'Auto'}] + [{'value': 'Auto', 'text': 'disabled'}] + [{'value': model, 'text': model} for model in models]
+    if 'Auto' in models:
+        models_list = [{'value': model, 'text': model} for model in models]
+    else:
+        models_list = [{'value': 'Auto', 'text': 'Auto'}] + [{'value': model, 'text': model} for model in models]
 
-
-
+    if 'disabled' in models:
+        models_list = [{'value': model, 'text': model} for model in models]
+    else:
+        models_list = [{'value': 'disabled', 'text': 'disabled'}] + [{'value': model, 'text': model} for model in models]
     
     return jsonify({'datasets': datasets_list, 'models': models_list})
 
@@ -270,18 +291,48 @@ def toggle_camera():
     print(status_message)
     return jsonify({"message": status_message, "status": status_message})
 
+@app.route('/active-model', methods=['GET'])
+def get_active_model():
+    global ACTIVE_MODEL
+    return jsonify({"active_model": ACTIVE_MODEL})
+
 @app.route('/backend/camera-status', methods=['GET'])
 def camera_status():
     global camera_state
     return jsonify({"camera_on": camera_state['camera_on']})
 
+stream_settings = {}
+
 @socketio.on('start_video')
 def handle_start_video(data):
+    global stream_settings
     try:
-        stream = data.get('stream')
-        print("Stream: ", stream)
-        
-        while camera_state['camera_on']:
+        stream = data.get('stream', '').strip()
+        # Initialize the settings for the stream
+        stream_settings[stream] = {
+            'show_face_mesh': data.get('show_face_mesh'),
+            'classify_gaze': data.get('classify_gaze'),
+            'draw_rectangles': data.get('draw_rectangles'),
+            'show_eyes': data.get('show_eyes'),
+            'show_mouth': data.get('show_mouth'),
+            'show_face_outline': data.get('show_face_outline'),
+            'show_text': data.get('show_text'),
+            'extract_eyes': data.get('extract_eyes')
+        }
+        camera_module.set_frame_settings(stream, 
+                                        stream_settings[stream]['show_face_mesh'], 
+                                        stream_settings[stream]['classify_gaze'], 
+                                        stream_settings[stream]['draw_rectangles'], 
+                                        stream_settings[stream]['show_eyes'], 
+                                        stream_settings[stream]['show_mouth'], 
+                                        stream_settings[stream]['show_face_outline'], 
+                                        stream_settings[stream]['show_text'], 
+                                        stream_settings[stream]['extract_eyes']
+                                            )
+        print(f"Stream started: {stream}, with initial settings: {stream_settings[stream]}")
+
+        while camera_state['camera_on']:            
+            # Pass the current settings to the get_frame method
             frame = camera_module.get_frame(stream)
             
             if frame:
@@ -299,13 +350,47 @@ def handle_start_video(data):
                         'type': stream,
                         'frame': frame
                     })
-
-                
             else:
                 logging.warning("No frame received from get_frame() method")
     
     except Exception as e:
         logging.error(f"Error in start_video: {e}")
+
+
+@socketio.on('update_settings')
+def handle_update_settings(data):
+    global stream_settings
+    try:
+        stream = data.get('stream')
+        if stream in stream_settings:
+            # Update the settings for the stream
+            stream_settings[stream].update({
+                'show_face_mesh': data.get('show_face_mesh'),
+                'classify_gaze': data.get('classify_gaze'),
+                'draw_rectangles': data.get('draw_rectangles'),
+                'show_eyes': data.get('show_eyes'),
+                'show_mouth': data.get('show_mouth'),
+                'show_face_outline': data.get('show_face_outline'),
+                'show_text': data.get('show_text'),
+                'extract_eyes': data.get('extract_eyes')
+            })
+
+            camera_module.set_frame_settings(stream, 
+                                            stream_settings[stream]['show_face_mesh'], 
+                                            stream_settings[stream]['classify_gaze'], 
+                                            stream_settings[stream]['draw_rectangles'], 
+                                            stream_settings[stream]['show_eyes'], 
+                                            stream_settings[stream]['show_mouth'], 
+                                            stream_settings[stream]['show_face_outline'], 
+                                            stream_settings[stream]['show_text'], 
+                                            stream_settings[stream]['extract_eyes'])
+            
+            print(f"Updated settings for stream {stream}: {stream_settings[stream]}")
+        else:
+            print(f"Stream {stream} is not active. Cannot update settings.")
+    
+    except Exception as e:
+        logging.error(f"Error in update_settings: {e}")
 
 @app.route('/datasets/<path:filename>')
 def serve_dataset_files(filename):
@@ -358,6 +443,9 @@ def clear_existing_training(model_name):
         for filename in os.listdir(model_path):
             file_path = os.path.join(model_path, filename)
             try:
+                # Change file permission to ensure it can be deleted
+                os.chmod(file_path, stat.S_IWRITE)
+                
                 if os.path.isfile(file_path) or os.path.islink(file_path):
                     os.unlink(file_path)  # Remove the file or link
                 elif os.path.isdir(file_path):
@@ -405,7 +493,8 @@ def send_files_concurrently(folder_path, dataset_name):
     time.sleep(5)
     print("[INFO] All files sent successfully.")
 
-    threading.Thread(target=start_calibration_training, args=(folder_path,)).start()
+    if calibration_progress['on'] == True:
+        threading.Thread(target=start_calibration_training, args=(folder_path,)).start()
     # dataset_loading_progress = 100  # Set progress to 100% after all files are sent
 
 
@@ -556,10 +645,21 @@ def start_training():
             return jsonify({"error": "Invalid input. 'dataset_path', 'epochs', and 'learning_rate' are required."}), 400
 
         # Start training if model loading was successful
-        try:
-            response = requests.post("http://192.168.0.58:8021/train", json={'train_model_name': model_name, 'dataset_path': folder_path, 'epochs': total_epochs, 'learning_rate': learning_rate})
-            response.raise_for_status()
-            print(f"[INFO] Training started successfully: {response.status_code}")
+        try:    
+            response = requests.post("http://192.168.0.58:8021/train", json={
+                'train_model_name': model_name, 
+                'dataset_path': folder_path, 
+                'epochs': total_epochs, 
+                'learning_rate': learning_rate
+            })
+
+            # Use status_code instead of status
+            response_data = response.json()
+            if response_data.get("status") == True:  
+                print(f"[INFO] Training started successfully, status code: {response.status_code}")
+            else:
+                print(f"[INFO] Training FAILED, status code: {response.status_code}")
+
         except requests.RequestException as e:
             return jsonify({"error": "Failed to start training.", "details": str(e)}), 500
 
@@ -568,6 +668,7 @@ def start_training():
     except Exception as e:
         print(f"[ERROR] An unexpected error occurred: {str(e)}")
         return jsonify({"error": "An unexpected error occurred.", "details": str(e)}), 500
+
 
 
 
@@ -593,9 +694,9 @@ def training_progress():
                 if input_image_path and target_image_path and predicted_image_path:
                     yield f"data: {json.dumps({'progress': progress, 'epoch_count': epoch_count, 'total_epochs': total_epochs, 'input_image': input_image_path, 'target_image': target_image_path,'predicted_image': predicted_image_path, 'generator_loss': generator_losses[-1], 'discriminator_loss': discriminator_losses[-1]})}\n\n".encode('utf-8')
                 else:
-                    yield f"data: {json.dumps({'error': 'Failed to get required checkpoint images'})}\n\n".encode('utf-8')
+                    yield f"data: {json.dumps({'error': 'Not all checkpoint image paths found, trying again...'})}\n\n".encode('utf-8')
             else:
-                yield f"data: {json.dumps({'error': 'Failed to get checkpoint images'})}\n\n".encode('utf-8')
+                yield f"data: {json.dumps({'error': 'No new checkpoint images, trying again...'})}\n\n".encode('utf-8')
 
         print("[INFO] Training completed successfully!")    
         yield f"data: {json.dumps({'progress': progress})}\n\n".encode('utf-8')
@@ -666,9 +767,6 @@ def get_checkpoint_images(checkpoint_model_name='Auto', timeout=600):
         return None, None
 
 # MODEL CALIBRATION
-
-calibration_progress = {'progress': 0, 'calibration_message': ''}
-
 def start_auto_training():
     global calibration_progress, dataset_loading_progress, model_name, folder_path
     calibration_progress['calibration_message'] = 'Sending dataset to cloud GPU'
@@ -733,7 +831,7 @@ def get_calibration_training_progress():
     progress = 0
     while progress < 100:
         try:
-            time.sleep(0.1)  # Simulate some delay or progress polling
+            time.sleep(10)  # Simulate some delay or progress polling
             saved_images, checkpoint_images_path = get_checkpoint_images(checkpoint_model_name='Auto')
 
             if saved_images:
@@ -766,8 +864,8 @@ def get_calibration_training_progress():
 
                         Losses:
                         -------
-                        Generator Loss:     0.1234
-                        Discriminator Loss: 0.5678
+                        Generator Loss:     LOSS HERE
+                        Discriminator Loss: LOSS HERE
                     """)
                     
                     print(f"[INFO] Training progress updated: {progress}%")
@@ -841,7 +939,7 @@ def delete_auto_dataset():
 def start_retraining():
     global calibration_progress
     # Reset progress
-    calibration_progress = {'progress': 0}
+    calibration_progress = {'progress': 0, 'calibration_message': 'Starting calibration procedure', 'on': True}
 
     # Start the retraining simulation in a separate thread
     retraining_thread = Thread(target=start_auto_training)
@@ -850,4 +948,4 @@ def start_retraining():
 
 
 if __name__ == "__main__":
-    socketio.run(app, host='127.0.0.1', port=8022, debug=False)
+    socketio.run(app, host='127.0.0.1', port=8000, debug=False)

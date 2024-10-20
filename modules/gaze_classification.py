@@ -41,9 +41,10 @@ class GazeClassifier:
         angle = np.arccos(dot_product)
         return np.degrees(angle)
 
-    def classify_gaze(self, frame, show_face_mesh=True):
+    def classify_gaze(self, frame, show_face_mesh):
+        old_frame = frame 
         # Convert the BGR image to RGB
-        image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image_rgb = cv2.cvtColor(old_frame, cv2.COLOR_BGR2RGB)
 
         # Process the image and find face meshes
         results = self.face_mesh.process(image_rgb)
@@ -53,7 +54,7 @@ class GazeClassifier:
             for face_landmarks in results.multi_face_landmarks:
                 if show_face_mesh:
                     self.mp_drawing.draw_landmarks(
-                        image=frame,
+                        image=old_frame,
                         landmark_list=face_landmarks,
                         connections=self.mp_face_mesh.FACEMESH_TESSELATION,
                         landmark_drawing_spec=self.drawing_spec,
@@ -87,6 +88,9 @@ class GazeClassifier:
                     head_pose = "Gaze Direction: Camera"
                 else:
                     head_pose = "Gaze Direction: Away"
+                
+                if show_face_mesh:
+                    frame = old_frame
 
                 return head_pose
 

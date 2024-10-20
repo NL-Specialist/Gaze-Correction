@@ -79,13 +79,174 @@ function disableFlashButton(button) {
 }
 
 
+// Initial state for each button
+// Assign variables to the window object
+window.face_mesh = false;
+window.mouth_grid = false;
+window.eye_grids = false;
+window.grid_labels = false;
+window.classify_gaze = false;
+window.head_outline = false;
+window.eye_bounding_boxes = false;
+window.eye_extraction = false;
+
+let currentStream = null; // Store the current stream to use in the emit
+
+// Function to toggle the state and apply CSS
+function toggleFeature(button, button_description, feature, socket, stream) {
+    // Log the feature to ensure it's being passed correctly
+    console.log(`Toggling feature: ${feature}`);
+
+    // Check if the feature exists on window
+    if (typeof window[feature] !== 'undefined') {
+        // Toggle the feature variable
+        window[feature] = !window[feature];
+        console.log(`Feature ${feature} is now ${window[feature]} for stream ${stream}`);
+    } else {
+        console.error(`Feature ${feature} does not exist on window`);
+        return;  // Exit if feature doesn't exist
+    }
+
+    // Toggle the button's visual state
+    if (window[feature]) {
+        button.style.transform = 'scale(1.15) translateY(-15px)';
+        button_description.style.textDecoration = 'underline';  // Apply underline
+        button_description.style.textDecorationColor = 'white'; // Set underline color to white
+        button_description.style.transition = 'text-decoration-color 0.3s ease'; // Smooth transition
+    } else {
+        button.style.transform = 'none'; // Reset the transformation
+        button_description.style.textDecoration = 'none'; // Remove underline
+    }
+
+    // Only emit updated settings if the stream is "live-video-left"
+    if (stream === 'live-video-left') {
+        // Log current state before emitting
+        console.log(`Emitting updated settings to server for ${stream}:`);
+        socket.emit('update_settings', {
+            stream: currentStream,
+            show_face_mesh: window.face_mesh,
+            classify_gaze: window.classify_gaze,
+            draw_rectangles: window.eye_bounding_boxes,
+            show_eyes: window.eye_grids,
+            show_mouth: window.mouth_grid,
+            show_face_outline: window.head_outline,
+            show_text: window.grid_labels,
+            extract_eyes: window.eye_extraction
+        });
+        console.log(`Settings updated for ${stream}`);
+    }
+}
 
 
+function openWebsockets(streams) {
+    streams.forEach((stream) => {
+        if (!socketConnections[stream]) {
+            console.log(`Opening WebSocket connection for stream: ${stream}`);
+            const socket = io('http://127.0.0.1:8000');
+            socketConnections[stream] = socket;
+            currentStream = stream; // Set the current stream
+            console.log(`Current stream set to ${currentStream}`);
+
+            socket.on('connect', () => {
+                console.log(`WebSocket connection established for ${stream}`);
+
+                // Initial emit of the settings when the connection is established
+                console.log("Sending initial settings to server:");
+                socket.emit('start_video', {
+                    stream: stream,
+                    show_face_mesh: window.face_mesh,
+                    classify_gaze: window.classify_gaze,
+                    draw_rectangles: window.eye_bounding_boxes,
+                    show_eyes: window.eye_grids,
+                    show_mouth: window.mouth_grid,
+                    show_face_outline: window.head_outline,
+                    show_text: window.grid_labels,
+                    extract_eyes: window.eye_extraction
+                });
+                console.log("Initial settings sent");
+
+                // If the current stream is 'live-video-left', bind the button events
+                if (stream === 'live-video-left') {
+                    console.log('Assigning button click listeners for live-video-left stream.');
+
+                    const buttons = document.querySelectorAll('.performance-button');
+                    const buttonDescriptions = document.querySelectorAll('.button-description');
+
+                    buttons[0].addEventListener('click', () => {
+                        console.log('Face mesh button clicked');
+                        toggleFeature(buttons[0], buttonDescriptions[0], 'face_mesh', socket, stream);
+                    });
+                    buttons[1].addEventListener('click', () => {
+                        console.log('Mouth grid button clicked');
+                        toggleFeature(buttons[1], buttonDescriptions[1], 'mouth_grid', socket, stream);
+                    });
+                    buttons[2].addEventListener('click', () => {
+                        console.log('Eye grids button clicked');
+                        toggleFeature(buttons[2], buttonDescriptions[2], 'eye_grids', socket, stream);
+                    });
+                    buttons[3].addEventListener('click', () => {
+                        console.log('Grid labels button clicked');
+                        toggleFeature(buttons[3], buttonDescriptions[3], 'grid_labels', socket, stream);
+                    });
+                    buttons[4].addEventListener('click', () => {
+                        console.log('Classify gaze button clicked');
+                        toggleFeature(buttons[4], buttonDescriptions[4], 'classify_gaze', socket, stream);
+                    });
+                    buttons[5].addEventListener('click', () => {
+                        console.log('Head outline button clicked');
+                        toggleFeature(buttons[5], buttonDescriptions[5], 'head_outline', socket, stream);
+                    });
+                    buttons[6].addEventListener('click', () => {
+                        console.log('Eye bounding boxes button clicked');
+                        toggleFeature(buttons[6], buttonDescriptions[6], 'eye_bounding_boxes', socket, stream);
+                    });
+                    buttons[7].addEventListener('click', () => {
+                        console.log('Eye extraction button clicked');
+                        toggleFeature(buttons[7], buttonDescriptions[7], 'eye_extraction', socket, stream);
+                    });
+                }
+            });
+
+            socket.on(stream, (data) => {
+                // Handle incoming frames as before...
+                if (stream === "live-video-left-and-right-eye") {
+                    if (data.type === "left_and_right_eye") {
+                        console.log("Received left and right eye frames");
+                        // Process left and right eye frames
+                    } else {
+                        console.log("ERROR: Stream Type live-video-left-and-right-eye should have type left_eye or right_eye");
+                    }
+                } else {
+                    let arrayBuffer = data.frame;
+                    let blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
+                    let url = URL.createObjectURL(blob);
+                    let videoElement = document.getElementById(stream);
+                    videoElement.src = url;
+                    videoElement.classList.add('visible');
+                    console.log(`Frame received and displayed for ${stream}`);
+                }
+            });
+
+            socket.on('error', (error) => {
+                console.error(`WebSocket error for ${stream}:`, error);
+            });
+
+            socket.on('disconnect', () => {
+                console.log(`WebSocket connection closed for ${stream}`);
+                // Handle cleanup after disconnect
+                document.getElementById('live-video-left-eye').classList.remove('visible');
+                document.getElementById('live-video-right-eye').classList.remove('visible');
+                document.getElementById('live-video-1').classList.remove('visible');
+            });
+        }
+    });
+}
 
 
 function manageWebsockets(activeTab) {
     const createDatasetStreams = ['live-video-left-and-right-eye', 'live-video-1'];
     const testStreams = ['live-video-left', 'live-video-right'];
+    
     console.log("Managing sockets, camera state: ", cameraOn);
     if (!cameraOn) {
         const streams = ['left', 'right', 'left-eye', 'right-eye', 'view1'];
@@ -116,87 +277,6 @@ function manageWebsockets(activeTab) {
         }
     }
 }
-
-function openWebsockets(streams) {
-    streams.forEach((stream) => {
-        if (!socketConnections[stream]) {
-            const socket = io('http://127.0.0.1:8000');
-            socketConnections[stream] = socket;
-
-            socket.on('connect', () => {
-                console.log(`WebSocket connection established for ${stream}`);
-                socket.emit('start_video', { stream: stream });
-            });
-
-            socket.on(stream, (data) => {
-                var arrayBuffer = '';
-                var left_eye_arrayBuffer = '';
-                var right_eye_arrayBuffer = '';
-                var blob = '';
-                var left_eye_blob = '';
-                var right_eye_blob = '';
-                var url = '';
-                var left_eye_url = '';
-                var right_eye_url = '';
-                var videoElement = '';
-                var left_eye_videoElement = '';
-                var right_eye_videoElement = '';
-
-                if (stream === "live-video-left-and-right-eye"){
-                    if (data.type === "left_and_right_eye"){
-                        left_eye_arrayBuffer = data.left_eye;
-                        right_eye_arrayBuffer = data.right_eye;
-
-                        left_eye_blob = new Blob([left_eye_arrayBuffer], { type: 'image/jpeg' });
-                        left_eye_url = URL.createObjectURL(left_eye_blob);
-                        right_eye_blob = new Blob([right_eye_arrayBuffer], { type: 'image/jpeg' });
-                        right_eye_url = URL.createObjectURL(right_eye_blob);
-
-
-                        left_eye_videoElement = document.getElementById("live-video-left-eye");
-                        right_eye_videoElement = document.getElementById("live-video-right-eye");
-
-                        left_eye_videoElement.src = left_eye_url;
-                        left_eye_videoElement.classList.add('visible');
-                        right_eye_videoElement.src = right_eye_url;
-                        right_eye_videoElement.classList.add('visible');
-                    }else{
-                        console.log("ERROR openWebsockets: Stream Type live-video-left-and-right-eye should have type left_eye or right_eye")
-                    }
-                }else{
-                    arrayBuffer = data.frame;
-                    blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
-                    url = URL.createObjectURL(blob);
-                
-                    videoElement = document.getElementById(stream);
-                    videoElement.src = url;
-                    videoElement.classList.add('visible');
-                }
-            });
-
-            socket.on('error', (error) => {
-                console.error(`WebSocket error for ${stream}:`, error);
-            });
-
-            socket.on('disconnect', () => {
-                console.log(`WebSocket connection closed for ${stream}`);
-                const leftVideoElement          = document.getElementById('live-video-left-eye');
-                const rightVideoElement         = document.getElementById('live-video-right-eye');
-                const leftEyeVideoElement       = document.getElementById('live-video-left-eye');
-                const rightEyeVideoElement      = document.getElementById('live-video-right-eye');
-                const live1VideoElement         = document.getElementById('live-video-1');
-
-                leftVideoElement.classList.remove('visible');
-                rightVideoElement.classList.remove('visible');
-                leftEyeVideoElement.classList.remove('visible');
-                rightEyeVideoElement.classList.remove('visible');
-                live1VideoElement.classList.remove('visible');
-                
-            });
-        }
-    });
-}
-
 
 
 
@@ -249,22 +329,24 @@ function toggleDatasetMode() {
 
 const correctionSelectModel = document.getElementById('correction-select-model');
 const checkpointDropdown = document.getElementById('correction-select-model-checkpoint');
-
+let selectedModel = '';
 // Function to toggle the correction select dropdown based on cameraOn value
 function toggleCorrectionSelectModel() {
     correctionSelectModel.disabled = !cameraOn;
 }
 
 document.addEventListener('DOMContentLoaded', (event) => {
-    document.getElementById('correction-select-model').addEventListener('click', function () {
-        if (!cameraOn) {
-            alert('Please turn on the camera to activate the gaze correction.');
-            return; // Prevent further execution if the camera is off
-        }
-    });
+    // sendSelectedModel(selectedModel);
+    // document.getElementById('correction-select-model').addEventListener('click', function () {
+    //     if (!cameraOn) {
+    //         alert('Please turn on the camera to activate the gaze correction.');
+    //         return; // Prevent further execution if the camera is off
+    //     }
+    // });
     
     document.getElementById('correction-select-model').addEventListener('change', function () {
-        const selectedModel = this.value;
+        selectedModel = this.value;
+        console.log('selectedModel: ', selectedModel);
         const checkpointDropdown = document.getElementById('correction-select-model-checkpoint');
 
         if (selectedModel === 'disabled')
@@ -278,8 +360,6 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
         sendSelectedModel(selectedModel);
     });
-
-    sendSelectedModel('Auto');
 
     document.getElementById('correction-select-model-checkpoint').addEventListener('change', function () {
         const selectedCheckpoint = this.value;
@@ -512,25 +592,49 @@ function createPopup(id, message, yesCallback, noCallback) {
     text.textContent = message;
     content.appendChild(text);
 
-    // Add the Yes button
-    const yesButton = document.createElement('button');
-    yesButton.className = 'training_popup-yes-button';
-    yesButton.textContent = 'Yes';
-    yesButton.onclick = () => {
-        document.body.removeChild(popupBackground);
-        if (yesCallback) yesCallback(); // Trigger the Yes callback
-    };
-    content.appendChild(yesButton);
+    if ((message==='Loading Dataset...') || (message==='Starting training, this can take up to 5 minutes please wait...')){
+        // Add the Yes button
+        const continueButton = document.createElement('button');
+        continueButton.className = 'training_popup-yes-button';
+        continueButton.textContent = 'Continue';
+        continueButton.onclick = () => {
+            document.body.removeChild(popupBackground);
+            if (yesCallback) yesCallback(); // Trigger the Yes callback
+        };
+        content.appendChild(continueButton);
+    }else if(message ==='Training is complete.'){
+        // Add the Yes button
+        const doneButton = document.createElement('button');
+        doneButton.className = 'training_popup-yes-button';
+        doneButton.textContent = 'Done';
+        doneButton.onclick = () => {
+            document.body.removeChild(popupBackground);
+            if (yesCallback) yesCallback(); // Trigger the Yes callback
+        };
+        content.appendChild(doneButton);
+    }
+    else{
+        // Add the Yes button
+        const yesButton = document.createElement('button');
+        yesButton.className = 'training_popup-yes-button';
+        yesButton.textContent = 'Yes';
+        yesButton.onclick = () => {
+            document.body.removeChild(popupBackground);
+            if (yesCallback) yesCallback(); // Trigger the Yes callback
+        };
+        content.appendChild(yesButton);
 
-    // Add the No button
-    const noButton = document.createElement('button');
-    noButton.className = 'training_popup-no-button';
-    noButton.textContent = 'No';
-    noButton.onclick = () => {
-        document.body.removeChild(popupBackground);
-        if (noCallback) noCallback(); // Trigger the No callback
-    };
-    content.appendChild(noButton);
+        // Add the No button
+        const noButton = document.createElement('button');
+        noButton.className = 'training_popup-no-button';
+        noButton.textContent = 'No';
+        noButton.onclick = () => {
+            document.body.removeChild(popupBackground);
+            if (noCallback) noCallback(); // Trigger the No callback
+        };
+        content.appendChild(noButton);
+    }
+        
 
     // Append content to the popup and popup to the background
     popup.appendChild(content);
@@ -660,7 +764,7 @@ function start_calibration_procedure() {
         progressDiv.className = 'calibration-progress';
         contentContainer.appendChild(progressDiv);
 
-        let image_count = 200;
+        let image_count = 100;
 
         const steps = [
             {
@@ -818,7 +922,7 @@ function start_calibration_procedure() {
                 } else {
                     console.error('Failed to get calibration progress');
                 }
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before next check
+                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before next check
             }
     
             // Retraining complete
@@ -922,7 +1026,7 @@ function startTraining() {
                             document.body.removeChild(loadingDatasetPopup);
                         }
                         
-                        createPopup('training-started-popup', 'Starting training, please wait...');
+                        createPopup('training-started-popup', 'Starting training, this can take up to 5 minutes please wait...');
                         updateProgressBar(1);
 
                         updateEpochProgress("0", "0", "0")
@@ -959,6 +1063,13 @@ function startActualTraining(datasetPath, epochs, learningRate) {
                 eventSource = new EventSource('/training_progress');
                 eventSource.onmessage = function (event) {
                     const data = JSON.parse(event.data);
+                    
+                    if (data.error) {
+                        console.log('Error:', data.error);
+                        // You can optionally show an error message or handle this case differently
+                        return;
+                    }
+                
                     const progress = data.progress;
                     const epoch_count = data.epoch_count; 
                     const total_epochs = data.total_epochs;
@@ -967,25 +1078,30 @@ function startActualTraining(datasetPath, epochs, learningRate) {
                     const predictedImage = data.predicted_image;
                     const generatorLoss = data.generator_loss;
                     const discriminatorLoss = data.discriminator_loss;
-
-                    console.log('Training started successfully.');
-                    const trainingStartedPopup = document.getElementById('training-started-popup-background');
-                    if (trainingStartedPopup) {
-                        document.body.removeChild(trainingStartedPopup);
+                
+                    // Check if all images are provided, do nothing if they are missing
+                    if (inputImage && targetImage && predictedImage) {
+                        console.log('Training started successfully.');
+                        const trainingStartedPopup = document.getElementById('training-started-popup-background');
+                        if (trainingStartedPopup) {
+                            document.body.removeChild(trainingStartedPopup);
+                        }
+                
+                        console.log('Training Progress:', progress);
+                        updateProgressBar(progress);
+                        updateImages(inputImage, targetImage, predictedImage);
+                        updateLossGraphs(generatorLoss, discriminatorLoss);
+                        updateEpochProgress(epoch_count, total_epochs, progress);
+                
+                        if (progress >= 100) {
+                            eventSource.close();
+                            createPopup('training-completed-popup', 'Training is complete.');
+                            updateDatasetOptions();
+                        }
+                    } else {
+                        console.log('Checkpoint images are missing, skipping update.');
                     }
-
-                    console.log('Training Progress:', progress);
-                    updateProgressBar(progress);
-                    updateImages(inputImage, targetImage, predictedImage);
-                    updateLossGraphs(generatorLoss, discriminatorLoss);
-                    updateEpochProgress(epoch_count, total_epochs, progress);
-
-                    if (progress >= 100) {
-                        eventSource.close();
-                        createPopup('training-completed-popup', 'Training is complete.');
-                        updateDatasetOptions();
-                    }
-                };
+                };                
             } else {
                 console.log('Error starting training:', xhr.responseText);
             }
@@ -1509,6 +1625,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
                 console.log("my toggle camera before: ", cameraOn)
                 if (result.status === 'On'){
                     cameraOn =  true;
+                    sendSelectedModel(selectedModel);
                     statusMessage.textContent = '🛑';
                     toggleCorrectionSelectModel();
                 }else{
