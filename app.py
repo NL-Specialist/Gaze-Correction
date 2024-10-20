@@ -222,59 +222,33 @@ def append_dataset():
 
 @app.route('/backend/capture-images', methods=['POST'])
 def capture_images():
-    data = request.get_json()
-    print(f"Received data: {data}")
-
-    dataset_mode = data.get("datasetMode")
-    dataset_name = data.get("datasetName")
-    cameraDirection = data.get("cameraDirection")
-    print("cameraDirection: ", cameraDirection)
-
-    if not dataset_mode:
-        return jsonify({"error": "Dataset mode is required"}), 400
-
-    if not dataset_name:
-        return jsonify({"error": "Dataset name is required"}), 400
-
-    # Set up dataset directory
-    dataset_dir = os.path.join("datasets", dataset_name)
-    os.makedirs(dataset_dir, exist_ok=True)
-
-    # Determine direction-specific directory (at_camera or away)
-    out_dir = os.path.join(dataset_dir, "at_camera" if cameraDirection == "lookingAtCamera" else "away")
-    os.makedirs(out_dir, exist_ok=True)
-
-    # Count existing images in the output directory and append without overwriting
-    existing_images = [f for f in os.listdir(out_dir) if f.startswith("image_")]
-    print(f"Existing images: {existing_images}")
-    
-    # Sort the existing images by their number to find the correct next image number
-    existing_image_numbers = [int(f.split('_')[1]) for f in existing_images if f.split('_')[1].isdigit()]
-    print(f"Extracted image numbers: {existing_image_numbers}")
-    
-    if existing_image_numbers:
-        image_number = max(existing_image_numbers) + 1
-    else:
-        image_number = 1
-
-    print(f"Next image number: {image_number}")
-    
-    image_dir = os.path.join(out_dir, f"image_{image_number}")
-    os.makedirs(image_dir, exist_ok=True)
-
-    print(f"Output directory: {dataset_dir}")
-    print(f"Image directory: {image_dir}")
-
     try:
-        # Capture frame and save it to the newly created image directory
-        camera_module.capture_frame_from_queue(image_dir)
-        print("Frame capture completed successfully")
-        return jsonify({"message": "Capture initiated"})
+        data = request.get_json()
+        print(f"Received data: {data}")
+
+        # Extract parameters from request data
+        dataset_mode = data.get("datasetMode")
+        dataset_name = data.get("datasetName")
+        camera_direction = data.get("cameraDirection")
+        total_images = int(data.get("totalImages"))  # Convert to integer here
+        print(f"Parsed datasetMode: {dataset_mode}, datasetName: {dataset_name}, cameraDirection: {camera_direction}, totalImages: {total_images}")
+
+        # Validate input parameters
+        if not dataset_mode or not dataset_name:
+            print("Error: Missing datasetMode or datasetName")
+            return jsonify({"error": "Dataset mode and name are required"}), 400
+
+        # Capture the images (buffers the frames)
+        camera_module.capture_frame_from_queue(dataset_name, camera_direction, total_images)
+
+        print("Image capture completed successfully!")
+
+        # Immediately respond with success
+        return jsonify({"message": "Image capture initiated"}), 200
+
     except Exception as e:
-        print(f"Error capturing frame: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-
+        print(f"Error in capture_images route: {e}")
+        return jsonify({"error": "An error occurred during image capture"}), 500
 
 @app.route('/backend/toggle-camera', methods=['POST'])
 def toggle_camera():
@@ -402,7 +376,7 @@ def send_image(filename):
 
 @app.route('/image_checkpoints/<epoch>/')
 def get_image(epoch):
-    base_dir = f'models/{model_name}'+'_left/' + 'image_checkpoints'
+    base_dir = f'models/{model_name}' + 'image_checkpoints'
     epoch = int(epoch)
     
     input_image_path = None
