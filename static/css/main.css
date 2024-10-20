@@ -485,6 +485,7 @@ h1 {
 }
 
 .left {
+    height:65px;
     display: flex;
     flex-direction: row;
     gap: 8vw;
@@ -500,9 +501,11 @@ h1 {
     
     /* Optional: Add a slight gradient for depth */
     background: linear-gradient(145deg, #2F3B51, #3C4966);
+    animation: slideInUp 2s forwards;
 }
 
 .right {
+    height:65px;
     display: flex;
     flex-direction: row;
     gap: 6.2vw;
@@ -518,6 +521,7 @@ h1 {
     
     /* Optional: Add a slight gradient for depth */
     background: linear-gradient(145deg, #2F3B51, #3C4966);
+    animation: slideInUp 2s forwards;
 }
 
 @keyframes slideInUp {

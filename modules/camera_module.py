@@ -19,22 +19,21 @@ import httpx
 import requests
 
 # Custom module for eye processing
-from modules.eyes import Eyes
+from modules.eyes import Eyes, clear_warped_images
 
 
 # Define global variable
 vcam_on = True
 
 
-
-
 class CameraModule:
     def __init__(self):
         self.camera_on = False
+        self.settings = {}
         self.camera = None
         self.device_nr = 2 # 0 or 1 or 2
         self.eyes_processor = Eyes()
-        self.frame_queue = queue.Queue(maxsize=15)
+        self.frame_queue = queue.Queue(maxsize=5)
         self.camera_thread = None
         self.stop_event = threading.Event()
         self.left_eye_frame = None
@@ -112,97 +111,85 @@ class CameraModule:
 
     def _generate_frames(self):
         """
-        Continuously capture frames from the camera and process them for encoding 
-        and adding to the frame queue. This function ensures that frames have 
-        monotonically increasing timestamps to avoid timestamp mismatch issues.
+        Continuously capture frames from the camera and process them for encoding
+        and adding to the frame queue. Ensures that valid frames with monotonically
+        increasing timestamps are passed into the MediaPipe graph.
         """
         try:
-            # Initialize variables
-            previous_timestamp = None  # To track the previous frame's timestamp
-            
-            # Loop until the camera is turned off or stop event is set
+            previous_timestamp = None  # Track previous frame's timestamp
             while not self.stop_event.is_set():
                 if not self.camera_on or self.camera is None:
-                    # If the camera is not on or is unavailable, wait briefly
-                    threading.Event().wait(1)
+                    time.sleep(1)
                     continue
 
-                # Attempt to read a frame from the camera
                 success, frame = self.camera.read()
-                if not success:
-                    logging.error("Failed to read frame from camera")
-                    continue  # If reading fails, retry in the next loop iteration
 
-                # Get the current timestamp
+                # Ensure the frame is valid
+                if not success or frame is None or frame.size == 0:
+                    logging.warning("Invalid or empty frame captured. Skipping this frame.")
+                    continue
+
                 current_timestamp = time.time()
 
-                # Ensure the current frame has a monotonically increasing timestamp
-                if previous_timestamp is not None and current_timestamp <= previous_timestamp:
-                    logging.warning(f"Non-monotonic timestamp detected: {current_timestamp} <= {previous_timestamp}. Skipping frame.")
-                    continue  # Skip the current frame if the timestamp is not valid
+                frame_rate = 20  # Set your camera's frame rate here
+                timestamp_increment = 1 / frame_rate
 
-                # Update the previous timestamp after a successful frame read
+                # Ensure monotonically increasing timestamps
+                if previous_timestamp is not None and current_timestamp <= previous_timestamp:
+                    current_timestamp = previous_timestamp + timestamp_increment
+                    logging.warning(f"Adjusted timestamp for monotonicity: {current_timestamp}")
+
                 previous_timestamp = current_timestamp
 
-                # Log the successful frame capture with the corresponding timestamp
-                logging.debug(f"Captured frame at timestamp: {current_timestamp}")
-
-                # Rotate the frame if the device requires it (e.g., for specific cameras)
+                # Rotate the frame if required (specific to your camera)
                 if self.device_nr == 2:
                     frame = cv2.rotate(frame, cv2.ROTATE_180)
 
-                # Encode the frame as a JPEG image
+                # Encode the frame into JPEG
                 ret, buffer = cv2.imencode('.jpg', frame)
                 if not ret:
-                    logging.error("Failed to encode frame to JPEG")
-                    continue  # If encoding fails, retry with the next frame
+                    logging.error("Failed to encode frame to JPEG. Skipping this frame.")
+                    continue
 
-                # Convert the encoded image to bytes and add it to the frame queue
                 frame_bytes = buffer.tobytes()
+
+                # Check if the frame queue is full and discard the oldest frame if necessary
+                if self.frame_queue.full():
+                    logging.warning("Frame queue is full. Clearing queue to prevent overflow.")
+                    self.frame_queue.queue.clear()  # Clear the queue to handle the backlog
+
+                # Add the valid frame to the queue
                 self.frame_queue.put(frame_bytes)
 
-                # Update the latest frame with the current one for future reference
+                # Update the latest valid frame
                 self.latest_frame = frame
 
         except Exception as e:
-            # Log any errors that occur during frame generation
             logging.error(f"Error in _generate_frames: {e}")
-            raise
 
 
-    def generate_frames(self, stream):
-        try:
-            while self.camera_on:
-                frame_bytes = self.frame_queue.get()
-                if stream == "live-video-left-and-right-eye":
-                    self.latest_left_and_right_eye_frames = self.get_frame(stream="live-video-left-and-right-eye", show_face_mesh=False, classify_gaze=False, draw_rectangles=False, show_eyes=False, show_mouth=False, show_face_outline=False, show_text=False, extract_eyes=False)
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        except Exception as e:
-            logging.error(f"Error in generate_frames: {e}")
-            raise
 
     def capture_frame_from_queue(self, image_dir):
         try:
-            logging.debug("Attempting to capture frame from queue")
-            if self.latest_frame is None:
-                logging.error("No frame available to capture")
+            print("Attempting to capture frame from queue")
+           
+    
+            frame = self._get_decoded_frame_from_queue()
+            if frame is None:
+                print("No frame available to capture")
                 raise RuntimeError("Failed to capture frame from queue")
-    
-            frame = self.latest_frame
-    
             # Save full frame
             cv2.imwrite(os.path.join(image_dir, 'full_frame.jpg'), frame)
     
             # Process and save left eye
-            self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame)
+            self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
             if self.left_eye_frame is not None and self.left_eye_frame.size != 0:
                 cv2.imwrite(os.path.join(image_dir, 'left_eye.jpg'), self.left_eye_frame)
             else:
                 logging.warning("No left eye capture_region found")
     
             # Process and save right eye
-            self.right_eye_frame = self.eyes_processor.get_right_eye_region(frame)
+            self.right_eye_frame = self.eyes_processor.get_right_eye_region(frame, False)
             if self.right_eye_frame is not None and self.right_eye_frame.size != 0:
                 cv2.imwrite(os.path.join(image_dir, 'right_eye.jpg'), self.right_eye_frame)
             else:
@@ -213,9 +200,43 @@ class CameraModule:
             logging.error(f"Error in capture_frame_from_queue: {e}")
             raise
 
-    def get_frame(self, stream, show_face_mesh, classify_gaze, draw_rectangles, show_eyes, show_mouth, show_face_outline, show_text, extract_eyes):
+    def set_frame_settings(self, stream, show_face_mesh, classify_gaze, draw_rectangles, show_eyes, show_mouth, show_face_outline, show_text, extract_eyes):
         try:
-            frame = self._get_decoded_frame()
+            # Ensure the stream name is one of the expected ones
+            if stream not in ['live-video-left', 'live-video-right', 'live-video-left-and-right-eye', 'live-video-1']:
+                raise ValueError(f"Stream name '{stream}' is not recognized")
+
+            self.settings["live-video-left"] = {
+                'show_face_mesh': show_face_mesh,
+                'classify_gaze': classify_gaze,
+                'draw_rectangles': draw_rectangles,
+                'show_eyes': show_eyes,
+                'show_mouth': show_mouth,
+                'show_face_outline': show_face_outline,
+                'show_text': show_text,
+                'extract_eyes': extract_eyes
+            }
+
+            self.settings['live-video-right'] = {
+                'show_face_mesh': False,
+                'classify_gaze': False,
+                'draw_rectangles': False,
+                'show_eyes': False,
+                'show_mouth': False,
+                'show_face_outline': False,
+                'show_text': False,
+                'extract_eyes': extract_eyes
+            }
+            print(f'Set frame settings for stream {stream} to: {self.settings[stream]}')
+            return True
+        except Exception as e:
+            print(f'[ERROR] error in set_frame_settings: {e}')
+            return False
+
+
+    def get_frame(self, stream):
+        try:
+            frame = self._get_decoded_frame_from_queue()
             if frame is None:
                 return None
 
@@ -226,10 +247,10 @@ class CameraModule:
                 return self._process_live_video_1_frame(frame)
 
             elif stream == "live-video-left":
-                return self._process_live_video_left_frame(frame, show_face_mesh, classify_gaze, draw_rectangles, show_eyes, show_mouth, show_face_outline, show_text)
+                return self._process_live_video_left_frame(frame)
 
             elif stream == "live-video-right":
-                return self._process_live_video_right_frame_async(self.latest_frame, extract_eyes)
+                return self._process_live_video_right_frame_async(frame)
 
             else:
                 logging.error(f"ERROR: Stream name not recognized: {stream}")
@@ -242,10 +263,10 @@ class CameraModule:
             logging.error(f"Error in get_frame: {e}")
             raise
 
-    def _get_decoded_frame(self):
+    def _get_decoded_frame_from_queue(self):
         try:
-            frame_bytes = self.frame_queue.get(timeout=1)
-            frame = cv2.imdecode(np.frombuffer(frame_bytes, np.uint8), cv2.IMREAD_COLOR)
+            frame_bytes = self.frame_queue.get()
+            frame =  self.latest_frame #cv2.imdecode(np.frombuffer(frame_bytes, np.uint8), cv2.IMREAD_COLOR)
             if frame is None:
                 logging.error("Failed to decode frame bytes into an image")
             return frame
@@ -254,6 +275,7 @@ class CameraModule:
             return None
 
     def _process_left_and_right_eye_frame(self, frame):
+        #self.latest_left_and_right_eye_frames = self.get_frame(stream="live-video-left-and-right-eye", show_face_mesh=False, classify_gaze=False, draw_rectangles=False, show_eyes=False, show_mouth=False, show_face_outline=False, show_text=False, extract_eyes=False)
         frames = {}
         self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
         if self.left_eye_frame is not None and self.left_eye_frame.size != 0:
@@ -284,17 +306,20 @@ class CameraModule:
         logging.error("Failed to encode processed frame to JPEG")
         return None
 
-    def _process_live_video_left_frame(self, frame, show_face_mesh, classify_gaze, draw_rectangles, show_eyes, show_mouth, show_face_outline, show_text):
-        # processed_frame = self.eyes_processor.draw_selected_landmarks(
-        #     frame, show_eyes=show_eyes, show_mouth=show_mouth, show_face_outline=show_face_outline, show_text=show_text)
-        processed_frame = self.eyes_processor.process_frame(frame, show_face_mesh=show_face_mesh, classify_gaze=classify_gaze, draw_rectangles=draw_rectangles)
+    def _process_live_video_left_frame(self, frame):
+        processed_frame = self.eyes_processor.draw_selected_landmarks(frame, show_eyes=self.settings['live-video-left']['show_eyes'], show_mouth=self.settings['live-video-left']['show_mouth'], show_face_outline=self.settings['live-video-left']['show_face_outline'], show_text=self.settings['live-video-left']['show_text'])
+        
+        processed_frame = self.eyes_processor.process_frame(processed_frame, 
+                                                            show_face_mesh=self.settings['live-video-left']['show_face_mesh'], 
+                                                            classify_gaze=self.settings['live-video-left']['classify_gaze'], 
+                                                            draw_rectangles=self.settings['live-video-left']['draw_rectangles'])
         ret, buffer = cv2.imencode('.jpg', processed_frame)
         if ret:
             return buffer.tobytes()
         logging.error("Failed to encode processed frame to JPEG")
         return None
-
-    def _process_live_video_right_frame_async(self, frame, extract_eyes):
+        
+    def _process_live_video_right_frame_async(self, frame):
         # Check if the active model is enabled and gaze correction is required
         if not self.active_model == 'disabled' and self.eyes_processor.should_correct_gaze:
             print("Active model is enabled and gaze correction is required")
@@ -309,7 +334,7 @@ class CameraModule:
                 print("Thread already running, skipping image generation")
 
             # Always use the latest corrected eye images from the folder
-            frame = self.eyes_processor.correct_gaze(frame, extract_eyes)
+            frame = self.eyes_processor.correct_gaze(frame, self.settings['live-video-right']['extract_eyes'])
 
         else:
             self.stop_generation()
@@ -387,6 +412,7 @@ class CameraModule:
 
                         print("[SUCCESS] Corrected eye images saved locally.")
                         self.thread_running = False
+                        # clear_warped_images()
                     else:
                         logging.error(f"[ERROR] Failed to correct eye images. HTTP Status: {corrected_eye_response.status_code}")
                 except requests.RequestException as e:

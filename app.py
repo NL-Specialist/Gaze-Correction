@@ -102,16 +102,18 @@ def set_correction_model():
         # Set the selected model 
         ACTIVE_MODEL = selected_model 
         print(f"Selected model: {selected_model}")
-
+        
+        start_time = time.time()
         load_model_response = requests.post("http://192.168.0.58:8021/load_model/", json={"load_model_name":ACTIVE_MODEL})
         if load_model_response.status_code == 200:
+            print(f"TOTAL TIME TO LOAD MODEL: {time.time() - start_time:.4f} seconds")
             load_model_data = load_model_response.json()
             checkpoint_list = load_model_data.get('checkpoint_list', [])
 
             if not selected_model == 'disabled':
                 restore_checkpoint_response = requests.post("http://192.168.0.58:8021/restore_checkpoint/", json={"checkpoint_nr":-1})
                 if restore_checkpoint_response.status_code == 200:
-                    time.sleep(5)
+                    # time.sleep(5)
                     camera_module.set_active_model(ACTIVE_MODEL)
                 else:
                     print(f"[ERROR] Restoring checkpoint failed with status code {restore_checkpoint_response.status_code}, response text: {restore_checkpoint_response.text}")
@@ -289,6 +291,11 @@ def toggle_camera():
     print(status_message)
     return jsonify({"message": status_message, "status": status_message})
 
+@app.route('/active-model', methods=['GET'])
+def get_active_model():
+    global ACTIVE_MODEL
+    return jsonify({"active_model": ACTIVE_MODEL})
+
 @app.route('/backend/camera-status', methods=['GET'])
 def camera_status():
     global camera_state
@@ -300,7 +307,7 @@ stream_settings = {}
 def handle_start_video(data):
     global stream_settings
     try:
-        stream = data.get('stream')
+        stream = data.get('stream', '').strip()
         # Initialize the settings for the stream
         stream_settings[stream] = {
             'show_face_mesh': data.get('show_face_mesh'),
@@ -312,23 +319,21 @@ def handle_start_video(data):
             'show_text': data.get('show_text'),
             'extract_eyes': data.get('extract_eyes')
         }
-        
+        camera_module.set_frame_settings(stream, 
+                                        stream_settings[stream]['show_face_mesh'], 
+                                        stream_settings[stream]['classify_gaze'], 
+                                        stream_settings[stream]['draw_rectangles'], 
+                                        stream_settings[stream]['show_eyes'], 
+                                        stream_settings[stream]['show_mouth'], 
+                                        stream_settings[stream]['show_face_outline'], 
+                                        stream_settings[stream]['show_text'], 
+                                        stream_settings[stream]['extract_eyes']
+                                            )
         print(f"Stream started: {stream}, with initial settings: {stream_settings[stream]}")
 
-        while camera_state['camera_on']:
-            # Retrieve the current settings
-            settings = stream_settings[stream]
-
+        while camera_state['camera_on']:            
             # Pass the current settings to the get_frame method
-            frame = camera_module.get_frame(stream, 
-                                            settings['show_face_mesh'], 
-                                            settings['classify_gaze'], 
-                                            settings['draw_rectangles'], 
-                                            settings['show_eyes'], 
-                                            settings['show_mouth'], 
-                                            settings['show_face_outline'], 
-                                            settings['show_text'], 
-                                            settings['extract_eyes'])
+            frame = camera_module.get_frame(stream)
             
             if frame:
                 if stream == "live-video-left-and-right-eye":
@@ -369,6 +374,17 @@ def handle_update_settings(data):
                 'show_text': data.get('show_text'),
                 'extract_eyes': data.get('extract_eyes')
             })
+
+            camera_module.set_frame_settings(stream, 
+                                            stream_settings[stream]['show_face_mesh'], 
+                                            stream_settings[stream]['classify_gaze'], 
+                                            stream_settings[stream]['draw_rectangles'], 
+                                            stream_settings[stream]['show_eyes'], 
+                                            stream_settings[stream]['show_mouth'], 
+                                            stream_settings[stream]['show_face_outline'], 
+                                            stream_settings[stream]['show_text'], 
+                                            stream_settings[stream]['extract_eyes'])
+            
             print(f"Updated settings for stream {stream}: {stream_settings[stream]}")
         else:
             print(f"Stream {stream} is not active. Cannot update settings.")
@@ -848,8 +864,8 @@ def get_calibration_training_progress():
 
                         Losses:
                         -------
-                        Generator Loss:     0.1234
-                        Discriminator Loss: 0.5678
+                        Generator Loss:     LOSS HERE
+                        Discriminator Loss: LOSS HERE
                     """)
                     
                     print(f"[INFO] Training progress updated: {progress}%")

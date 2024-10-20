@@ -98,15 +98,16 @@ class Eyes:
             raise
 
 
-    def process_frame(self, frame, show_face_mesh=True, classify_gaze=True, draw_rectangles=True):
+    def process_frame(self, frame, show_face_mesh, classify_gaze, draw_rectangles):
         try:
             h, w, _ = frame.shape
 
-            if classify_gaze:
-                # Determine gaze direction
-                self.gaze_direction = self.gaze_classifier.classify_gaze(frame, show_face_mesh)
-                self.should_correct_gaze =  True #self.gaze_direction == "Gaze Direction: Away"
+            
+            # Determine gaze direction
+            self.gaze_direction = self.gaze_classifier.classify_gaze(frame, show_face_mesh)
+            self.should_correct_gaze =  True #self.gaze_direction == "Gaze Direction: Away"
 
+            if classify_gaze:
                 cv2.putText(frame, self.gaze_direction, (w // 2 - 100, h // 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             if draw_rectangles and self.left_eye_bbox and self.right_eye_bbox:
@@ -211,7 +212,8 @@ class Eyes:
 
     def get_left_eye_region(self, frame, show_eyes=False):
         try:
-            frame = self.draw_selected_landmarks(frame, show_eyes=show_eyes, show_mouth=False, show_face_outline=False, show_text=False)
+            temp_frame = frame
+            temp_frame = self.draw_selected_landmarks(temp_frame, show_eyes=show_eyes, show_mouth=False, show_face_outline=False, show_text=False)
             if self.left_eye_bbox:
                 (x_min, y_min), (x_max, y_max) = self.left_eye_bbox
                 left_eye_frame = frame[y_min:y_max, x_min:x_max]
@@ -275,7 +277,7 @@ class Eyes:
             logging.error(f"Error in draw_selected_landmarks: {e}")
             raise
 
-    def correct_gaze(self, frame, corrected_left_eye_path=None, corrected_right_eye_path=None, extract_eyes=True):
+    def correct_gaze(self, frame, extract_eyes):
         try:
             print("Starting gaze correction")
 
@@ -284,11 +286,11 @@ class Eyes:
             corrected_right_eye_path = os.path.abspath('generated_images/right_eye.jpg')
 
             # Save the original frame for away gaze
-            dest_image_path = 'my_frame_away.jpg'
+            dest_image_path = 'destination_image.jpg'
             cv2.imwrite(dest_image_path, frame)
             # dest_frame = frame
             print(f"Saved frame to {dest_image_path}")
-
+            corrected_image = frame
             if self.should_correct_gaze:
                 print("Gaze correction is enabled")
                 # Convert frame to RGB for face mesh processing
@@ -331,21 +333,22 @@ class Eyes:
                                 retry_count += 1
 
                         if self.left_eye_img is not None and self.right_eye_img is not None:
-                            self.overlay_image(frame, self.left_eye_bbox, self.left_eye_img)
+                            self.overlay_image(corrected_image, self.left_eye_bbox, self.left_eye_img)
                             print("Left eye overlaid on the frame")
 
-                            self.overlay_image(frame, self.right_eye_bbox, self.right_eye_img)
+                            self.overlay_image(corrected_image, self.right_eye_bbox, self.right_eye_img)
                             print("Right eye overlaid on the frame")
 
-                            # # Save the corrected frame
-                            # image_path = 'my_frame.jpg'
-                            # cv2.imwrite(image_path, frame)
-                            # print(f"Corrected frame saved to {image_path}")
+                            # Save the corrected frame
+                            corrected_image_path = 'corrected_image.jpg'
+                            cv2.imwrite(corrected_image_path, corrected_image)
+                            print(f"Corrected frame saved to {corrected_image_path}")
 
                             # Extract the final corrected image
                             if extract_eyes: 
-                                corrected_image = extract(frame=frame, dest_image_path=dest_image_path)
+                                corrected_image = extract(corrected_image_path=corrected_image_path, dest_image_path=dest_image_path)
                             else: corrected_image = frame
+
                             print("Final corrected image extracted")
                         else:
                             logging.error("Failed to load one or both corrected eye images.")
@@ -535,92 +538,174 @@ def detect_green_contours(image, padding=1):
     
     return padded_contours, green_mask
 
-# Extra eye regions only
-def extract(frame, dest_image_path='sam_test_image_away.jpg'):
-    # Assume 'frame' is the input image already loaded
-    image = frame
-    copy_image = np.copy(image)  # Create a copy of the input frame
+import cupy as cp
 
-    # Load destination image (since this is still provided by path)
-    dest_image = load_image(dest_image_path)
-    copy_dest_image = load_image(dest_image_path)
+kernel = np.ones((3, 3), np.uint8)
 
-    # Initialize Eyes class
-    eyes_processor = Eyes()
-    dest_eyes_processor = Eyes()
+def clear_warped_images():
+    global left_eye_region
+    left_eye_region = None
+    return True
 
-    # Process face landmarks in input image
-    results, img_h, img_w = process_face_landmarks(image, eyes_processor)
-    draw_eye_contours(image, results, img_h, img_w, 1)
+clear_warped_images()
 
-    # Process face landmarks in destination image
-    dest_results, dest_img_h, dest_img_w = process_face_landmarks(dest_image, dest_eyes_processor)
-    draw_eye_contours(dest_image, dest_results, dest_img_h, dest_img_w, 1)
-
-    
-    
-    # Detect green contours and mask
-    contours, green_mask = detect_green_contours(image,1)
-    dest_contours, dest_green_mask = detect_green_contours(dest_image,1)
-
-
-    # Extract the eye regions from the input image
-    left_eye_contour = contours[0]
-    right_eye_contour = contours[1]
-
-    # Get the contours for the eyes in the destination image
-    dest_left_eye_contour = dest_contours[0]
-    dest_right_eye_contour = dest_contours[1]
-
-    # Create masks for left and right eye regions
-    left_eye_mask = np.zeros_like(copy_image)  # Create an all-black mask
-    cv2.drawContours(left_eye_mask, [left_eye_contour], -1, (255, 255, 255), thickness=cv2.FILLED)  # Draw filled contour in white
-
-    right_eye_mask = np.zeros_like(copy_image)  # Create an all-black mask
-    cv2.drawContours(right_eye_mask, [right_eye_contour], -1, (255, 255, 255), thickness=cv2.FILLED)  # Draw filled contour in white
-
-    # Enlarge masks
-    kernel = np.ones((3, 3), np.uint8)
-    left_eye_mask = cv2.dilate(left_eye_mask, kernel, iterations=2)
-    right_eye_mask = cv2.dilate(right_eye_mask, kernel, iterations=2)
-
-    # Extract eye regions using enlarged masks
-    left_eye_region = cv2.bitwise_and(copy_image, left_eye_mask)
-    right_eye_region = cv2.bitwise_and(copy_image, right_eye_mask)
-
-    # Define the points for the perspective transform
-    left_eye_points = left_eye_contour.reshape(-1, 2).astype(np.float32)
-    left_eye_points = np.float32([left_eye_points.min(axis=0), [left_eye_points[:, 0].max(), left_eye_points[:, 1].min()], 
-                                left_eye_points.max(axis=0), [left_eye_points[:, 0].min(), left_eye_points[:, 1].max()]])
-    dest_left_eye_points = dest_left_eye_contour.reshape(-1, 2).astype(np.float32)
-    dest_left_eye_points = np.float32([dest_left_eye_points.min(axis=0), [dest_left_eye_points[:, 0].max(), dest_left_eye_points[:, 1].min()], 
-                                    dest_left_eye_points.max(axis=0), [dest_left_eye_points[:, 0].min(), dest_left_eye_points[:, 1].max()]])
-    right_eye_points = right_eye_contour.reshape(-1, 2).astype(np.float32)
-    right_eye_points = np.float32([right_eye_points.min(axis=0), [right_eye_points[:, 0].max(), right_eye_points[:, 1].min()], 
-                                right_eye_points.max(axis=0), [right_eye_points[:, 0].min(), right_eye_points[:, 1].max()]])
-    dest_right_eye_points = dest_right_eye_contour.reshape(-1, 2).astype(np.float32)
-    dest_right_eye_points = np.float32([dest_right_eye_points.min(axis=0), [dest_right_eye_points[:, 0].max(), dest_right_eye_points[:, 1].min()], 
-                                        dest_right_eye_points.max(axis=0), [dest_right_eye_points[:, 0].min(), dest_right_eye_points[:, 1].max()]])
+def process_input_image(corrected_image_path):
+    try:
+        global kernel
         
-    # Perform perspective transform
-    H_left, _ = cv2.findHomography(left_eye_points, dest_left_eye_points)
-    warped_left_eye = cv2.warpPerspective(left_eye_region, H_left, (copy_dest_image.shape[1], copy_dest_image.shape[0]))
+        start_time = time.time()
+        total_start_time = start_time
+        image = load_image(corrected_image_path)
+        image_cpy = load_image(corrected_image_path)
+        print(f"Time to copy input image: {time.time() - start_time:.4f} seconds")
+        
+        # Initialize Eyes class and process face landmarks
+        eyes_processor = Eyes()
+        start_time = time.time()
+        results, img_h, img_w = process_face_landmarks(image, eyes_processor)
+        draw_eye_contours(image, results, img_h, img_w, 1)
+        print(f"Time to process input face landmarks: {time.time() - start_time:.4f} seconds")
+            
+        # Detect green contours and mask
+        start_time = time.time()
+        contours, green_mask = detect_green_contours(image, 1)
+        print(f"Time to detect green contours: {time.time() - start_time:.4f} seconds")
+            
+        # Extract the eye regions from the input image
+        left_eye_contour = contours[0]
+        right_eye_contour = contours[1]
+            
+        # Create masks for left and right eye regions
+        start_time = time.time()
+        left_eye_mask = np.zeros_like(image_cpy)  # Create an all-black mask
+        cv2.drawContours(left_eye_mask, [left_eye_contour], -1, (255, 255, 255), thickness=cv2.FILLED)
+        right_eye_mask = np.zeros_like(image_cpy)  # Create an all-black mask
+        cv2.drawContours(right_eye_mask, [right_eye_contour], -1, (255, 255, 255), thickness=cv2.FILLED)
+        print(f"Time to create eye masks: {time.time() - start_time:.4f} seconds")
+            
+        # Enlarge masks
+        start_time = time.time()
+        left_eye_mask = cv2.dilate(left_eye_mask, kernel, iterations=2)
+        right_eye_mask = cv2.dilate(right_eye_mask, kernel, iterations=2)
+        print(f"Time to enlarge masks: {time.time() - start_time:.4f} seconds")
+            
+        # Extract eye regions using enlarged masks
+        start_time = time.time()
+        left_eye_region = cv2.bitwise_and(image_cpy, left_eye_mask)
+        right_eye_region = cv2.bitwise_and(image_cpy, right_eye_mask)
+        print(f"Time to extract eye regions: {time.time() - start_time:.4f} seconds")
+            
+        return left_eye_region, right_eye_region, left_eye_contour, right_eye_contour, image
 
-    H_right, _ = cv2.findHomography(right_eye_points, dest_right_eye_points)
-    warped_right_eye = cv2.warpPerspective(right_eye_region, H_right, (copy_dest_image.shape[1], copy_dest_image.shape[0]))
+    except cv2.error as e:
+        print(f"OpenCV error: {e}")
+    except Exception as e:
+        print(f"Unexpected error in process_input_image: {e}")
 
-    # Create masks for warped eye regions
-    left_eye_warped_mask = np.zeros_like(copy_dest_image, dtype=np.uint8)
-    cv2.drawContours(left_eye_warped_mask, [dest_left_eye_contour], -1, (255, 255, 255), thickness=cv2.FILLED)
+def process_destination_image(dest_image_path):
+    try:
+        
+        start_time = time.time()
+        dest_image = load_image(dest_image_path)
+        copy_dest_image = load_image(dest_image_path)
+        print(f"Time to load destination image: {time.time() - start_time:.4f} seconds")
+        
+        # Initialize Eyes class and process face landmarks
+        dest_eyes_processor = Eyes()
+        start_time = time.time()
+        dest_results, dest_img_h, dest_img_w = process_face_landmarks(dest_image, dest_eyes_processor)
+        draw_eye_contours(dest_image, dest_results, dest_img_h, dest_img_w, 1)
+        print(f"Time to process destination face landmarks: {time.time() - start_time:.4f} seconds")
+            
+        # Detect green contours and mask
+        start_time = time.time()
+        dest_contours, dest_green_mask = detect_green_contours(dest_image, 1)
+        print(f"Time to detect green contours: {time.time() - start_time:.4f} seconds")
+            
+        # Get the contours for the eyes in the destination image
+        dest_left_eye_contour = dest_contours[0]
+        dest_right_eye_contour = dest_contours[1]
+            
+        return dest_image, dest_left_eye_contour, dest_right_eye_contour, copy_dest_image
 
-    right_eye_warped_mask = np.zeros_like(copy_dest_image, dtype=np.uint8)
-    cv2.drawContours(right_eye_warped_mask, [dest_right_eye_contour], -1, (255, 255, 255), thickness=cv2.FILLED)
+    except FileNotFoundError as e:
+        print(f"File not found: {e}")
+    except cv2.error as e:
+        print(f"OpenCV error: {e}")
+    except Exception as e:
+        print(f"Unexpected error in process_destination_image: {e}")
 
-    # Combine images using masking
-    combined_image = np.copy(copy_dest_image)
-    cv2.copyTo(warped_left_eye, left_eye_warped_mask, combined_image)
-    cv2.copyTo(warped_right_eye, right_eye_warped_mask, combined_image)
-    
-    cv2.imwrite('result_eye_overlay.jpg', combined_image)
-    
-    return combined_image
+def combine_images(frame, left_eye_region, right_eye_region, left_eye_contour, right_eye_contour, image, dest_image, dest_left_eye_contour, dest_right_eye_contour, copy_dest_image):
+    try:
+        # Define the points for the perspective transform
+        start_time = time.time()
+        left_eye_points = left_eye_contour.reshape(-1, 2).astype(np.float32)
+        left_eye_points = np.float32([left_eye_points.min(axis=0), [left_eye_points[:, 0].max(), left_eye_points[:, 1].min()], 
+                                      left_eye_points.max(axis=0), [left_eye_points[:, 0].min(), left_eye_points[:, 1].max()]])
+        dest_left_eye_points = dest_left_eye_contour.reshape(-1, 2).astype(np.float32)
+        dest_left_eye_points = np.float32([dest_left_eye_points.min(axis=0), [dest_left_eye_points[:, 0].max(), dest_left_eye_points[:, 1].min()], 
+                                           dest_left_eye_points.max(axis=0), [dest_left_eye_points[:, 0].min(), dest_left_eye_points[:, 1].max()]])
+        right_eye_points = right_eye_contour.reshape(-1, 2).astype(np.float32)
+        right_eye_points = np.float32([right_eye_points.min(axis=0), [right_eye_points[:, 0].max(), right_eye_points[:, 1].min()], 
+                                       right_eye_points.max(axis=0), [right_eye_points[:, 0].min(), right_eye_points[:, 1].max()]])
+        dest_right_eye_points = dest_right_eye_contour.reshape(-1, 2).astype(np.float32)
+        dest_right_eye_points = np.float32([dest_right_eye_points.min(axis=0), [dest_right_eye_points[:, 0].max(), dest_right_eye_points[:, 1].min()], 
+                                            dest_right_eye_points.max(axis=0), [dest_right_eye_points[:, 0].min(), dest_right_eye_points[:, 1].max()]])
+        print(f"Time to define points for perspective transform: {time.time() - start_time:.4f} seconds")
+        
+        # Perform perspective transform
+        # Check if any regions are None before proceeding
+        if left_eye_region is None or right_eye_region is None:
+            left_eye_region, right_eye_region, left_eye_contour, right_eye_contour, image = process_input_image(corrected_image_path)
+        
+        start_time = time.time()
+        H_left, _ = cv2.findHomography(left_eye_points, dest_left_eye_points)
+        warped_left_eye = cv2.warpPerspective(left_eye_region, H_left, (copy_dest_image.shape[1], copy_dest_image.shape[0]))
+        H_right, _ = cv2.findHomography(right_eye_points, dest_right_eye_points)
+        warped_right_eye = cv2.warpPerspective(right_eye_region, H_right, (copy_dest_image.shape[1], copy_dest_image.shape[0]))
+        print(f"Time to perform perspective transform: {time.time() - start_time:.4f} seconds")
+        
+        # Create masks for warped eye regions
+        start_time = time.time()
+        left_eye_warped_mask = np.zeros_like(copy_dest_image, dtype=np.uint8)
+        cv2.drawContours(left_eye_warped_mask, [dest_left_eye_contour], -1, (255, 255, 255), thickness=cv2.FILLED)
+        right_eye_warped_mask = np.zeros_like(copy_dest_image, dtype=np.uint8)
+        cv2.drawContours(right_eye_warped_mask, [dest_right_eye_contour], -1, (255, 255, 255), thickness=cv2.FILLED)
+        print(f"Time to create masks for warped regions: {time.time() - start_time:.4f} seconds")
+        
+        # Combine images using masking
+        start_time = time.time()
+        combined_image = np.copy(copy_dest_image)
+        cv2.copyTo(warped_left_eye, left_eye_warped_mask, combined_image)
+        cv2.copyTo(warped_right_eye, right_eye_warped_mask, combined_image)
+        print(f"Time to combine images: {time.time() - start_time:.4f} seconds")
+        
+        return combined_image
+
+    except cv2.error as e:
+        print(f"OpenCV error during combine_images: {e}")
+    except Exception as e:
+        print(f"Unexpected error in combine_images: {e}")
+
+def extract(corrected_image_path, dest_image_path):
+    try:
+        global left_eye_region, right_eye_region, left_eye_contour, right_eye_contour, image 
+        start_time = time.time()
+        
+        if left_eye_region is None:
+            left_eye_region, right_eye_region, left_eye_contour, right_eye_contour, image = process_input_image(corrected_image_path)
+
+        dest_image, dest_left_eye_contour, dest_right_eye_contour, copy_dest_image = process_destination_image(dest_image_path)
+        
+        # Ensure combined_image is converted back to CPU memory if needed for further steps
+        combined_image = combine_images(corrected_image_path, left_eye_region, right_eye_region, left_eye_contour, right_eye_contour, image, dest_image, dest_left_eye_contour, dest_right_eye_contour, copy_dest_image)
+        
+        print(f"FINAL EXTRACTION TIME: {time.time() - start_time:.4f} seconds")
+        
+        return combined_image  # Convert back to numpy array if needed by other parts of the program
+
+    except Exception as e:
+        print(f"No eyes found for extraction, returning original image: {e}")
+        return load_image(dest_image_path)
+
+

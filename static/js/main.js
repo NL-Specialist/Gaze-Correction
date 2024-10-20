@@ -81,7 +81,7 @@ function disableFlashButton(button) {
 
 // Initial state for each button
 // Assign variables to the window object
-window.face_mesh = true;
+window.face_mesh = false;
 window.mouth_grid = false;
 window.eye_grids = false;
 window.grid_labels = false;
@@ -592,7 +592,7 @@ function createPopup(id, message, yesCallback, noCallback) {
     text.textContent = message;
     content.appendChild(text);
 
-    if ((message==='Loading Dataset...') || (message==='Starting training, please wait...')){
+    if ((message==='Loading Dataset...') || (message==='Starting training, this can take up to 5 minutes please wait...')){
         // Add the Yes button
         const continueButton = document.createElement('button');
         continueButton.className = 'training_popup-yes-button';
@@ -764,7 +764,7 @@ function start_calibration_procedure() {
         progressDiv.className = 'calibration-progress';
         contentContainer.appendChild(progressDiv);
 
-        let image_count = 200;
+        let image_count = 100;
 
         const steps = [
             {
@@ -1026,7 +1026,7 @@ function startTraining() {
                             document.body.removeChild(loadingDatasetPopup);
                         }
                         
-                        createPopup('training-started-popup', 'Starting training, please wait...');
+                        createPopup('training-started-popup', 'Starting training, this can take up to 5 minutes please wait...');
                         updateProgressBar(1);
 
                         updateEpochProgress("0", "0", "0")
