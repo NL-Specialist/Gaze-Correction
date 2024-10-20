@@ -296,4 +296,3 @@ class EYES_GAN:
                 print(f"An unexpected error occurred: {e}")
             finally:
                 self.summary_writer.close()
-
