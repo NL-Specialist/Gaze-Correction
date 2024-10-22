@@ -373,7 +373,11 @@ class CameraModule:
         
     def _process_live_video_right_frame_async(self, frame):
         # Check if the active model is enabled and gaze correction is required
+        print("RUNNING STREAM FOR: live-video-right 1")
+        print("self.active_model: ", self.active_model)
+        print("self.eyes_processor.should_correct_gaze: ", self.eyes_processor.should_correct_gaze)
         if not self.active_model == 'disabled' and self.eyes_processor.should_correct_gaze:
+            print("RUNNING STREAM FOR: live-video-right 2")
             print("Active model is enabled and gaze correction is required")
 
             # Only generate images if no other thread is running
@@ -390,7 +394,7 @@ class CameraModule:
 
         else:
             self.stop_generation()
-            self.eyes_processor.should_correct_gaze = False
+            # self.eyes_processor.should_correct_gaze = False
 
         # Send the frame to the virtual camera if enabled
         if vcam_on:

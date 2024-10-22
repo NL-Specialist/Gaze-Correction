@@ -46,7 +46,7 @@ class Eyes:
             self.left_eye_bbox = None
             self.right_eye_bbox = None
 
-            self.should_correct_gaze = False
+            self.should_correct_gaze = True
             self.gaze_direction = "Gaze Direction: Away"
 
             # Initialize overlay images
@@ -104,10 +104,9 @@ class Eyes:
 
             
             # Determine gaze direction
-            self.gaze_direction = self.gaze_classifier.classify_gaze(frame, show_face_mesh)
-            self.should_correct_gaze =  True #self.gaze_direction == "Gaze Direction: Away"
-
             if classify_gaze:
+                self.gaze_direction = self.gaze_classifier.classify_gaze(frame, show_face_mesh, True)
+                self.should_correct_gaze =  True #self.gaze_direction == "Gaze Direction: Away"
                 cv2.putText(frame, self.gaze_direction, (w // 2 - 100, h // 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             if draw_rectangles and self.left_eye_bbox and self.right_eye_bbox:
