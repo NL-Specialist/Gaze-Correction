@@ -416,34 +416,22 @@ class CameraModule:
         try:
             start_time = time.time()
             print("[INFO] Starting image generation for both eyes...")
-
-            # Process left eye
-            print("[INFO] Extracting left eye region...")
-            left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
-            left_eye_image_data = None
-            if left_eye_frame is not None and left_eye_frame.size != 0:
-                _, left_eye_image_data = cv2.imencode('.jpg', left_eye_frame)
-            else:
-                logging.warning("No left eye region found")
             
-            # Process right eye
-            print("[INFO] Extracting right eye region...")
-            right_eye_frame = self.eyes_processor.get_right_eye_region(frame, False)
-            right_eye_image_data = None
-            if right_eye_frame is not None and right_eye_frame.size != 0:
-                _, right_eye_image_data = cv2.imencode('.jpg', right_eye_frame)
-            else:
-                logging.warning("No right eye region found")
             
             # Check if both eyes were found
-            if left_eye_image_data is not None and right_eye_image_data is not None:
-                print("[INFO] Sending both eye images to /generate_image/")
+            if frame is not None:
+                print("[INFO] Sending frame to /generate_image/")
 
-                # Convert image data to bytes and prepare for sending
+                # Convert the frame to JPEG format using OpenCV
+                success, image_data = cv2.imencode('.jpg', frame)
+                if not success:
+                    logging.error("[ERROR] Failed to encode the frame as JPEG.")
+                    return None, None
+
+                # Prepare for sending
                 files = {
-                    "left_eye": ("left_eye.jpg", left_eye_image_data.tobytes(), "image/jpeg"),
-                    "right_eye": ("right_eye.jpg", right_eye_image_data.tobytes(), "image/jpeg")
-                }
+                    "frame": ("full_frame.jpg", image_data.tobytes(), "image/jpeg"),
+                }   
 
                 try:
                     # Make the POST request synchronously using requests
