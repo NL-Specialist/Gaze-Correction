@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+from scipy.spatial import distance as dist
 
 # ==========================================================
 # GazeClassifier Module
@@ -33,6 +34,8 @@ class GazeClassifier:
         self.PITCH_THRESHOLD = 147  # degrees
         self.YAW_THRESHOLD = 5  # degrees
 
+        self.EYE_POSITION_THRESHOLD = 3
+
     def calculate_angle(self, vector1, vector2):
         """Calculate the angle between two vectors."""
         unit_vector1 = vector1 / np.linalg.norm(vector1)
@@ -41,7 +44,20 @@ class GazeClassifier:
         angle = np.arccos(dot_product)
         return np.degrees(angle)
 
-    def classify_gaze(self, frame, show_face_mesh):
+   # Function to calculate EAR (Eye Aspect Ratio)
+    def calculate_ear(self, eye):
+        # Compute the Euclidean distances between the two sets of vertical eye landmarks (p2, p6) and (p3, p5)
+        A = dist.euclidean(eye[1], eye[5])
+        B = dist.euclidean(eye[2], eye[4])
+
+        # Compute the Euclidean distance between the horizontal eye landmarks (p1, p4)
+        C = dist.euclidean(eye[0], eye[3])
+
+        # Compute the eye aspect ratio
+        ear = (A + B) / (2.0 * C)
+        return ear
+
+    def classify_gaze(self, frame, show_face_mesh, show_pupils):
         old_frame = frame 
         # Convert the BGR image to RGB
         image_rgb = cv2.cvtColor(old_frame, cv2.COLOR_BGR2RGB)
@@ -49,7 +65,10 @@ class GazeClassifier:
         # Process the image and find face meshes
         results = self.face_mesh.process(image_rgb)
 
-        # Draw the face mesh annotations on the image if show_face_mesh is True
+        # EAR threshold for detecting closed eyes
+        EAR_THRESHOLD = 0.22  # Adjusted for more sensitivity
+        GAZE_OFFSET_THRESHOLD = 2  # Reduced from 3 for more sensitivity
+
         if results.multi_face_landmarks:
             for face_landmarks in results.multi_face_landmarks:
                 if show_face_mesh:
@@ -60,39 +79,56 @@ class GazeClassifier:
                         landmark_drawing_spec=self.drawing_spec,
                         connection_drawing_spec=self.drawing_spec)
 
-                # Extract landmarks
-                landmarks = face_landmarks.landmark
+                # Extract landmarks for left and right eyes using the specified indices
+                left_eye_landmarks = [face_landmarks.landmark[i] for i in [7, 163, 144, 153, 154, 155, 173, 157, 158, 159, 160, 161]]
+                right_eye_landmarks = [face_landmarks.landmark[i] for i in [384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374, 380, 381, 382, 398]]
 
-                # Define key landmarks
-                nose_tip = np.array([landmarks[1].x, landmarks[1].y, landmarks[1].z])
-                chin = np.array([landmarks[152].x, landmarks[152].y, landmarks[152].z])
-                left_eye = np.array([landmarks[33].x, landmarks[33].y, landmarks[33].z])
-                right_eye = np.array([landmarks[263].x, landmarks[263].y, landmarks[263].z])
+                # Convert landmarks to pixel positions
+                left_eye_pts = np.array([[int(landmark.x * old_frame.shape[1]), int(landmark.y * old_frame.shape[0])] for landmark in left_eye_landmarks])
+                right_eye_pts = np.array([[int(landmark.x * old_frame.shape[1]), int(landmark.y * old_frame.shape[0])] for landmark in right_eye_landmarks])
 
-                # Calculate vectors
-                nose_to_chin = chin - nose_tip
-                eye_to_eye = right_eye - left_eye
+                # Calculate EAR for both eyes
+                left_ear = self.calculate_ear(left_eye_pts)
+                right_ear = self.calculate_ear(right_eye_pts)
 
-                # Reference vertical vector (upward direction)
-                vertical_vector = np.array([0, -1, 0])
+                # Check if eyes are closed
+                if left_ear < EAR_THRESHOLD and right_ear < EAR_THRESHOLD:
+                    print("Eyes are closed")
+                    gaze_direction = "Gaze Direction: Eyes Closed"
+                    return gaze_direction
 
-                # Calculate pitch (up/down tilt)
-                pitch_angle = self.calculate_angle(nose_to_chin, vertical_vector)
+                # Approximate the pupil position by averaging the eye region's landmarks
+                left_eye_center = np.mean(left_eye_pts, axis=0).astype(int)
+                right_eye_center = np.mean(right_eye_pts, axis=0).astype(int)
 
-                # Calculate roll (in-plane rotation)
-                horizontal_vector = np.array([1, 0, 0])
-                yaw_angle = self.calculate_angle(eye_to_eye, horizontal_vector)
+                # Calculate horizontal and vertical offsets
+                left_eye_position = left_eye_center[0] - np.mean(left_eye_pts[:, 0])  # Horizontal offset
+                right_eye_position = right_eye_center[0] - np.mean(right_eye_pts[:, 0])  # Horizontal offset
+                left_eye_vertical_offset = left_eye_center[1] - np.mean(left_eye_pts[:, 1])  # Vertical offset
+                right_eye_vertical_offset = right_eye_center[1] - np.mean(right_eye_pts[:, 1])  # Vertical offset
 
-                # Determine if looking at the camera or away
-                if pitch_angle > self.PITCH_THRESHOLD and yaw_angle < self.YAW_THRESHOLD:
-                    head_pose = "Gaze Direction: Camera"
+                # Print debug information
+                print(f"Left Eye Position Offset: {left_eye_position}, Vertical Offset: {left_eye_vertical_offset}")
+                print(f"Right Eye Position Offset: {right_eye_position}, Vertical Offset: {right_eye_vertical_offset}")
+                print(f"Horizontal Threshold: {GAZE_OFFSET_THRESHOLD}")
+
+                # Improved threshold to determine if the user is looking at the camera
+                if (abs(left_eye_position) < GAZE_OFFSET_THRESHOLD and abs(right_eye_position) < GAZE_OFFSET_THRESHOLD and 
+                    abs(left_eye_vertical_offset) < GAZE_OFFSET_THRESHOLD and abs(right_eye_vertical_offset) < GAZE_OFFSET_THRESHOLD):
+                    print("Gaze classified as: Camera")
+                    gaze_direction = "Gaze Direction: Camera"
                 else:
-                    head_pose = "Gaze Direction: Away"
-                
-                if show_face_mesh:
-                    frame = old_frame
+                    print("Gaze classified as: Away")
+                    gaze_direction = "Gaze Direction: Away"
 
-                return head_pose
+                if show_pupils:
+                    # Optionally visualize the pupil centers
+                    cv2.circle(old_frame, tuple(left_eye_center), 3, (0, 255, 0), -1)
+                    cv2.circle(old_frame, tuple(right_eye_center), 3, (0, 255, 0), -1)
+
+                return gaze_direction
 
         return "Gaze: Unknown"
+
+
 

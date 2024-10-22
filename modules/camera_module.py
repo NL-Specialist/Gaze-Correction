@@ -33,7 +33,7 @@ class CameraModule:
         self.camera = None
         self.device_nr = 2 # 0 or 1 or 2
         self.eyes_processor = Eyes()
-        self.frame_queue = queue.Queue(maxsize=5)
+        self.frame_queue = queue.Queue(maxsize=50)
         self.camera_thread = None
         self.stop_event = threading.Event()
         self.left_eye_frame = None
@@ -169,33 +169,63 @@ class CameraModule:
 
 
 
-    def capture_frame_from_queue(self, image_dir):
+    def capture_frame_from_queue(self, dataset_name, camera_direction, total_images):
+        print(f"capture_frame_from_queue called with: dataset_name={dataset_name}, camera_direction={camera_direction}")
+        
         try:
-            print("Attempting to capture frame from queue")
-           
-    
-            frame = self._get_decoded_frame_from_queue()
-            if frame is None:
-                print("No frame available to capture")
-                raise RuntimeError("Failed to capture frame from queue")
-            # Save full frame
-            cv2.imwrite(os.path.join(image_dir, 'full_frame.jpg'), frame)
-    
-            # Process and save left eye
-            self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
-            if self.left_eye_frame is not None and self.left_eye_frame.size != 0:
-                cv2.imwrite(os.path.join(image_dir, 'left_eye.jpg'), self.left_eye_frame)
-            else:
-                logging.warning("No left eye capture_region found")
-    
-            # Process and save right eye
-            self.right_eye_frame = self.eyes_processor.get_right_eye_region(frame, False)
-            if self.right_eye_frame is not None and self.right_eye_frame.size != 0:
-                cv2.imwrite(os.path.join(image_dir, 'right_eye.jpg'), self.right_eye_frame)
-            else:
-                logging.warning("No right eye capture_region found")
-    
-            logging.debug("Frame capture from queue completed")
+            # Set up dataset directory once
+            dataset_dir = os.path.join("datasets", dataset_name)
+            out_dir = os.path.join(dataset_dir, "at_camera" if camera_direction == "lookingAtCamera" else "away")
+            os.makedirs(out_dir, exist_ok=True)
+
+            # Use globbing or regex to avoid parsing filenames manually
+            existing_image_numbers = sorted(
+                [int(f.split('_')[1]) for f in os.listdir(out_dir) if f.startswith("image_") and f.split('_')[1].isdigit()],
+                reverse=True
+            )
+            
+            image_number = existing_image_numbers[0] + 1 if existing_image_numbers else 1
+
+            # Buffer to store frames
+            frame_buffer = []
+
+            # Capture the frames
+            for i in range(total_images):
+                print(f"Attempting to capture frame {i+1} from queue")
+                frame_bytes = self.frame_queue.get()
+                frame =  cv2.imdecode(np.frombuffer(frame_bytes, np.uint8), cv2.IMREAD_COLOR)
+
+                if frame is None:
+                    print("No frame available to capture")
+                    raise RuntimeError("Failed to capture frame from queue")
+                else:
+                    print(f"Frame {i+1} captured successfully, size: {frame.shape}")
+                
+                # Append the captured frame to the buffer
+                frame_buffer.append((frame, image_number))
+                image_number += 1
+                time.sleep(0.035)
+
+            # After capturing all frames, process the buffer and save the images
+            for i, (frame, img_num) in enumerate(frame_buffer):
+                image_dir = os.path.join(out_dir, f"image_{img_num}")
+                os.makedirs(image_dir, exist_ok=True)
+
+                # Save full frame
+                cv2.imwrite(os.path.join(image_dir, 'full_frame.jpg'), frame)
+
+                # Process and save left eye
+                self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
+                if self.left_eye_frame is not None and self.left_eye_frame.size != 0:
+                    cv2.imwrite(os.path.join(image_dir, 'left_eye.jpg'), self.left_eye_frame)
+
+                # Process and save right eye
+                self.right_eye_frame = self.eyes_processor.get_right_eye_region(frame, False)
+                if self.right_eye_frame is not None and self.right_eye_frame.size != 0:
+                    cv2.imwrite(os.path.join(image_dir, 'right_eye.jpg'), self.right_eye_frame)
+
+            logging.debug("All frames captured and saved successfully")
+
         except Exception as e:
             logging.error(f"Error in capture_frame_from_queue: {e}")
             raise
@@ -226,6 +256,28 @@ class CameraModule:
                 'show_face_outline': False,
                 'show_text': False,
                 'extract_eyes': extract_eyes
+            }
+
+            self.settings['live-video-left-and-right-eye'] = {
+                'show_face_mesh': False,
+                'classify_gaze': False,
+                'draw_rectangles': False,
+                'show_eyes': False,
+                'show_mouth': False,
+                'show_face_outline': False,
+                'show_text': False,
+                'extract_eyes': False
+            }
+
+            self.settings['live-video-1'] = {
+                'show_face_mesh': False,
+                'classify_gaze': False,
+                'draw_rectangles': False,
+                'show_eyes': False,
+                'show_mouth': False,
+                'show_face_outline': False,
+                'show_text': False,
+                'extract_eyes': False
             }
             print(f'Set frame settings for stream {stream} to: {self.settings[stream]}')
             return True
@@ -297,9 +349,9 @@ class CameraModule:
 
     def _process_live_video_1_frame(self, frame):
         processed_frame = self.eyes_processor.draw_selected_landmarks(
-            frame, show_eyes=True, show_mouth=False, show_face_outline=False, show_text=False)
+            frame, show_eyes=False, show_mouth=False, show_face_outline=False, show_text=False)
         processed_frame = self.eyes_processor.process_frame(
-            processed_frame, show_face_mesh=False, classify_gaze=True, draw_rectangles=True)
+            processed_frame, show_face_mesh=False, classify_gaze=False, draw_rectangles=True)
         ret, buffer = cv2.imencode('.jpg', processed_frame)
         if ret:
             return buffer.tobytes()
@@ -321,7 +373,11 @@ class CameraModule:
         
     def _process_live_video_right_frame_async(self, frame):
         # Check if the active model is enabled and gaze correction is required
+        print("RUNNING STREAM FOR: live-video-right 1")
+        print("self.active_model: ", self.active_model)
+        print("self.eyes_processor.should_correct_gaze: ", self.eyes_processor.should_correct_gaze)
         if not self.active_model == 'disabled' and self.eyes_processor.should_correct_gaze:
+            print("RUNNING STREAM FOR: live-video-right 2")
             print("Active model is enabled and gaze correction is required")
 
             # Only generate images if no other thread is running
@@ -338,7 +394,7 @@ class CameraModule:
 
         else:
             self.stop_generation()
-            self.eyes_processor.should_correct_gaze = False
+            # self.eyes_processor.should_correct_gaze = False
 
         # Send the frame to the virtual camera if enabled
         if vcam_on:

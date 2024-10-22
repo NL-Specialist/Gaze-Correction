@@ -208,15 +208,34 @@ function openWebsockets(streams) {
             });
 
             socket.on(stream, (data) => {
-                // Handle incoming frames as before...
+                // Handle incoming frames for left and right eyes
                 if (stream === "live-video-left-and-right-eye") {
                     if (data.type === "left_and_right_eye") {
                         console.log("Received left and right eye frames");
-                        // Process left and right eye frames
+            
+                        // Process left eye frame
+                        let leftArrayBuffer = data.left_frame;
+                        let leftBlob = new Blob([leftArrayBuffer], { type: 'image/jpeg' });
+                        let leftUrl = URL.createObjectURL(leftBlob);
+                        let leftEyeElement = document.getElementById("live-video-left");
+                        leftEyeElement.src = leftUrl;
+                        leftEyeElement.classList.add('visible');
+                        console.log("Left eye frame received and displayed");
+            
+                        // Process right eye frame
+                        let rightArrayBuffer = data.right_frame;
+                        let rightBlob = new Blob([rightArrayBuffer], { type: 'image/jpeg' });
+                        let rightUrl = URL.createObjectURL(rightBlob);
+                        let rightEyeElement = document.getElementById("live-video-right");
+                        rightEyeElement.src = rightUrl;
+                        rightEyeElement.classList.add('visible');
+                        console.log("Right eye frame received and displayed");
+            
                     } else {
-                        console.log("ERROR: Stream Type live-video-left-and-right-eye should have type left_eye or right_eye");
+                        console.log("ERROR: Stream Type live-video-left-and-right-eye should have type left_and_right_eye");
                     }
                 } else {
+                    // Handle other streams (non-eye streams)
                     let arrayBuffer = data.frame;
                     let blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
                     let url = URL.createObjectURL(blob);
@@ -840,39 +859,50 @@ function start_calibration_procedure() {
         await proceedToNextStep(); // Start the first step
     }
 
-    // Function to capture images and update progress
     async function captureImages(totalImages, payload) {
         const progressDiv = document.querySelector('.calibration-progress');
+        const capturePromises = [];
+    
+        progressDiv.textContent = `Capturing ${totalImages} Images`;
+        
+        payload['totalImages'] = totalImages;
 
-        for (let i = 0; i < totalImages; i++) {
-            progressDiv.textContent = `Capturing Image ${i + 1}/${totalImages}`;
-            try {
-                const response = await fetch('/backend/capture-images', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
+        const capturePromise = fetch('/backend/capture-images', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        })
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            } else {
+                return response.json().then(errorData => {
+                    throw new Error(`Failed to capture images: ${errorData.error}`);
                 });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    console.log(result.message);
-                } else {
-                    const errorData = await response.json();
-                    console.log(`Failed to capture images: ${errorData.error}`);
-                }
-            } catch (error) {
-                console.error('Error capturing images:', error);
-                alert('Error capturing images.');
-                break; // Exit the loop if there's an error
             }
+        })
+        .then(result => {
+            console.log(result.message);
+        })
+        .catch(error => {
+            console.error('Error capturing images:', error);
+        });
+    
+        capturePromises.push(capturePromise);
+        
+    
+        try {
+            await Promise.all(capturePromises);
+        } catch (error) {
+            alert('Error capturing one or more images.');
         }
-
+    
         // Clear the progress text after capturing images
         progressDiv.textContent = '';
     }
-
+    
     // Function to handle retraining model step
     async function startRetrainingModel() {
         // Update the popup message
@@ -1547,30 +1577,42 @@ document.addEventListener('DOMContentLoaded', (event) => {
             }else{
                 total_images = nr_images;
             }
-
-            for (let i = 0; i < total_images; i++) {
-                progressDiv.textContent = `Image ${i + 1}/${total_images}`;
-                try {
-                    const response = await fetch('/backend/capture-images', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
+            
+            const capturePromises = [];
+            payload['totalImages'] = total_images;
+            progressDiv.textContent = `Capturing ${total_images} Images`;
+            const capturePromise = fetch('/backend/capture-images', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    return response.json().then(errorData => {
+                        throw new Error(`Failed to capture images: ${errorData.error}`);
                     });
-        
-                    if (response.ok) {
-                        const result = await response.json();
-                        console.log(result.message);
-                    } else {
-                        const errorData = await response.json();
-                        console.log(`Failed to capture images: ${errorData.error}`);
-                    }
-                } catch (error) {
-                    console.error('Error capturing images:', error);
-                    alert('Error capturing images.');
                 }
+            })
+            .then(result => {
+                console.log(result.message);
+            })
+            .catch(error => {
+                console.error('Error capturing images:', error);
+            });
+        
+            capturePromises.push(capturePromise);
+            
+        
+            try {
+                await Promise.all(capturePromises);
+            } catch (error) {
+                alert('Error capturing one or more images.');
             }
+            
 
             bigRedCircle.style.display = 'none';  // Hide the red circle when looking at the camera
         
