@@ -397,7 +397,37 @@ class Eyes:
             logging.error(f"Error in _calculate_eye_boxes: {e}")
             raise
 
-    
+    def overlay_boxes(self, frame, eye_bbox, eye_img):
+        try:
+            (x_min, y_min), (x_max, y_max) = eye_bbox
+            eye_region = frame[y_min:y_max, x_min:x_max]
+            eye_img_resized = cv2.resize(eye_img, (x_max - x_min, y_max - y_min))
+
+            # Histogram matching to adjust contrast and color
+            eye_img_matched = match_histograms(eye_img_resized, eye_region)
+
+            # Ensure both images have the same data type (uint8)
+            if eye_img_matched.dtype != eye_region.dtype:
+                eye_img_matched = eye_img_matched.astype(eye_region.dtype)
+
+            # Increase the weight of the eye image to make it more prominent
+            blended_eye = cv2.addWeighted(eye_region, 0.3, eye_img_matched, 0.7, 0)
+
+            # If the eye image has an alpha channel, blend only the RGB channels
+            if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel
+                eye_img_rgb = eye_img_resized[:, :, :3]  # Use only RGB channels
+                mask = eye_img_resized[:, :, 3]  # Alpha channel
+                mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR) / 255.0  # Normalize alpha mask
+
+                # Perform alpha blending based on the alpha channel
+                frame[y_min:y_max, x_min:x_max] = (1 - mask) * eye_region + mask * eye_img_rgb
+            else:
+                # No alpha channel, use the blended image
+                frame[y_min:y_max, x_min:x_max] = blended_eye
+
+        except Exception as e:
+            logging.error(f"Error in overlay_image: {e}")
+            raise
 
     def overlay_image(self, frame, eye_bbox, eye_img):
         try:

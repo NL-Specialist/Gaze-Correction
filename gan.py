@@ -12,7 +12,7 @@ from modules.eyes_gan_generator import EYES_GAN_GENERATOR
 from modules.eyes_gan_discriminator import EYES_GAN_DISCRIMINATOR
 from modules.eyes_gan import EYES_GAN
 from modules.split_datasets import split_folders
-
+from modules.eyes import Eyes 
 # Standard library imports
 import os
 import base64
@@ -32,6 +32,7 @@ from ultralytics import SAM
 import numpy as np
 import cv2
 from PIL import Image
+import mediapipe as mp
 
 # Asynchronous and multi-threading utilities
 from concurrent.futures import ThreadPoolExecutor
@@ -49,6 +50,12 @@ app = FastAPI()
 logging.basicConfig(level=logging.DEBUG)
 
 executor = ThreadPoolExecutor()
+
+# Initialize MediaPipe face mesh
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh()
+mp_drawing = mp.solutions.drawing_utils
+drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
 
 # Global variables for GAN components
 eyes_gan_left = None
@@ -200,7 +207,7 @@ async def restore_checkpoint(request: RestoreCheckpointRequest):
     return {"status": "Checkpoint restored successfully."}
 
 @app.post("/generate_image/")
-def generate_image(left_eye: UploadFile = File(...), right_eye: UploadFile = File(...)):
+def generate_image(frame: UploadFile = File(...)):
     global eyes_gan_left, eyes_gan_right
 
     if eyes_gan_left is None or eyes_gan_right is None:
@@ -208,46 +215,81 @@ def generate_image(left_eye: UploadFile = File(...), right_eye: UploadFile = Fil
         return {"error": "Model not loaded. Call /load_model/ first."}
 
     try:
-        # Read the uploaded left and right eye images synchronously
-        print("[INFO] Reading uploaded left and right eye images...")
-        left_img = read_image_sync(left_eye)
-        right_img = read_image_sync(right_eye)
+        # Read the uploaded image
+        print("[INFO] Reading uploaded frame...")
+        img = read_image_sync(frame)
 
-        # Expand dimensions for model input
-        left_img = tf.expand_dims(left_img, axis=0)
-        right_img = tf.expand_dims(right_img, axis=0)
+        if img is None:
+            logging.error("[ERROR] Failed to decode the image.")
+            return {"error": "Invalid image format"}
 
-        # Save the expanded left and right images to INPUT_EYES folder
+        img = tf.expand_dims(img, axis=0)
+        full_frame_path = os.path.join("INPUT_EYES", "full_frame.jpg")
+        full_frame_encoded = tf.io.encode_jpeg(tf.squeeze(img, axis=0))
+        
+        print(f'Saving Full Frame to : {full_frame_path}')
+        with open(full_frame_path, "wb") as f:
+            f.write(full_frame_encoded.numpy())
+        
+        image = cv2.imread(full_frame_path)
+        
+        # Process left and right eyes
+        eyes_processor = Eyes()
+        left_img = eyes_processor.get_left_eye_region(image, False)
+        right_img = eyes_processor.get_right_eye_region(image, False)
+        
         input_left_eye_path = os.path.join("INPUT_EYES", "left_eye.jpg")
         input_right_eye_path = os.path.join("INPUT_EYES", "right_eye.jpg")
-
-        # Encode the images as JPEG to save them
-        left_img_encoded = tf.io.encode_jpeg(tf.squeeze(left_img, axis=0))
-        right_img_encoded = tf.io.encode_jpeg(tf.squeeze(right_img, axis=0))
-
+        
         print(f"[INFO] Saving left eye to {input_left_eye_path} and right eye to {input_right_eye_path}...")
-        # Save the encoded images synchronously
-        with open(input_left_eye_path, "wb") as f_left, open(input_right_eye_path, "wb") as f_right:
-            f_left.write(left_img_encoded.numpy())
-            f_right.write(right_img_encoded.numpy())
+        cv2.imwrite(input_left_eye_path, left_img)
+        cv2.imwrite(input_right_eye_path, right_img)
+        
+        # Expand dims before passing to GAN model (to match expected input shape)
+        left_img = np.expand_dims(left_img, axis=0)  # Shape becomes (1, 24, 50, 3)
+        right_img = np.expand_dims(right_img, axis=0)  # Shape becomes (1, 24, 50, 3)
 
-        # Continue with generating corrected images
+        # GAN model prediction and returning corrected images (remains the same)
         output_left_filepath = os.path.join("generated_images", "left_eye.jpg")
         output_right_filepath = os.path.join("generated_images", "right_eye.jpg")
 
-        print("[INFO] Generating corrected images using the GAN models...")
         eyes_gan_left.predict(left_img, save_path=output_left_filepath)
-        eyes_gan_right.predict(right_img, save_path=output_right_filepath)
+        eyes_gan_right.predict(right_img, save_path=output_right_filepath)        
+        
+        left_eye_img = cv2.imread(output_left_filepath)
+        right_eye_img = cv2.imread(output_right_filepath)
 
-        # Read the generated images back into memory as bytes
-        with open(output_left_filepath, "rb") as left_eye_file, \
-                open(output_right_filepath, "rb") as right_eye_file:
-            left_eye_bytes = left_eye_file.read()
-            right_eye_bytes = right_eye_file.read()
+        # Overlay new eyes onto frame
+        eyes_processor.overlay_boxes(image, eyes_processor.left_eye_bbox, left_eye_img)
+        eyes_processor.overlay_boxes(image, eyes_processor.right_eye_bbox, right_eye_img)
+        
+        # Process the image and find face meshes
+        results = face_mesh.process(image)
 
-        print("[SUCCESS] Corrected eye images generated and read back into memory.")
+        if results.multi_face_landmarks:
+            for face_landmarks in results.multi_face_landmarks:
+                # Extract landmarks for left and right eyes in correct order
+                left_eye_landmarks = [face_landmarks.landmark[i] for i in [33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 145 ]]
+                right_eye_landmarks = [face_landmarks.landmark[i] for i in [362, 398, 384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374, 380]]
+        
+                # Extract and save the left eye region with No Background
+                left_eye_image = extract_eye_region(image, left_eye_landmarks)
+                output_left_no_background_filepath = os.path.join("OUTPUT_EYES", "left_eye_transparent.png")
+                cv2.imwrite(output_left_no_background_filepath, left_eye_image)
+                print(f"[SUCCESS] Saved corrected left eye with transparent background to: {output_left_no_background_filepath}")
 
-        # Return the images in base64 encoding for the client
+                # Extract and save the right eye region with No Background
+                right_eye_image = extract_eye_region(image, right_eye_landmarks)
+                output_right_no_background_filepath = os.path.join("OUTPUT_EYES", "right_eye_transparent.png")
+                cv2.imwrite(output_right_no_background_filepath, right_eye_image)
+                print(f"[SUCCESS] Saved corrected right eye with transparent background to: {output_right_no_background_filepath}")
+        
+        with open(output_left_no_background_filepath, "rb") as left_eye_no_background_file, \
+                open(output_right_no_background_filepath, "rb") as right_eye_no_background_file:
+            left_eye_bytes = left_eye_no_background_file.read()
+            right_eye_bytes = right_eye_no_background_file.read()
+
+
         return {
             "left_eye": base64.b64encode(left_eye_bytes).decode(),
             "right_eye": base64.b64encode(right_eye_bytes).decode()
@@ -257,6 +299,35 @@ def generate_image(left_eye: UploadFile = File(...), right_eye: UploadFile = Fil
         logging.error(f"[ERROR] An error occurred during image generation: {str(e)}")
         return {"error": str(e)}
 
+def extract_eye_region(frame, eye_landmarks):
+    h, w, _ = frame.shape
+
+    # Convert landmarks to 2D pixel coordinates
+    eye_coords = np.array([(int(landmark.x * w), int(landmark.y * h)) for landmark in eye_landmarks], np.int32)
+
+    # Create a mask
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.fillPoly(mask, [eye_coords], 255)
+
+    # Create a transparent background
+    transparent_image = np.zeros((h, w, 4), dtype=np.uint8)
+
+    # Copy the original frame where the mask is white
+    eye_region = cv2.bitwise_and(frame, frame, mask=mask)
+
+    # Add the eye region to the transparent image
+    transparent_image[:, :, :3] = eye_region
+    transparent_image[:, :, 3] = mask
+
+    # Make black pixels transparent
+    black_pixels = np.all(eye_region == [0, 0, 0], axis=-1)
+    transparent_image[black_pixels, 3] = 0
+
+    # Crop the transparent image
+    x, y, w, h = cv2.boundingRect(eye_coords)
+    cropped_eye = transparent_image[y:y+h, x:x+w]
+
+    return cropped_eye
 
 
 def read_image_sync(file: UploadFile):
