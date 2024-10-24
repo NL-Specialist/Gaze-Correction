@@ -111,7 +111,7 @@ def detect_pupils_and_save_eyes(frame, frame_with_contours, frame_with_dots, fac
 
     # Check if frame is valid before saving
     if frame_with_contours is not None and not np.all(frame_with_contours == 0):
-        cv2.imwrite("image_with_eye_contours.jpg", frame_with_contours)
+        cv2.imwrite("image_with_eye_contours.png", frame_with_contours)
     else:
         print("Error: Frame with contours is invalid.")
     
@@ -173,7 +173,7 @@ def detect_pupils_and_save_eyes(frame, frame_with_contours, frame_with_dots, fac
             cv2.imwrite("right_eye_transparent.png", right_eye_image)
 
         # Save the image with drawn contours for verification
-        cv2.imwrite("image_with_eye_dots.jpg", frame_with_dots)
+        cv2.imwrite("image_with_eye_dots.png", frame_with_dots)
 
 
 # Initialize MediaPipe face mesh
@@ -183,8 +183,8 @@ mp_drawing = mp.solutions.drawing_utils
 drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
 
 # Load your image
-# image = cv2.imread("destination_image.jpg")
-# frame_with_contours = cv2.imread("destination_image.jpg")
+# image = cv2.imread("destination_image.png")
+# frame_with_contours = cv2.imread("destination_image.png")
 
 image = cv2.imread("at_image.png")
 frame_with_contours = cv2.imread("at_image.png")

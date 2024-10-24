@@ -840,13 +840,19 @@ def start_calibration_training(folder_path):
             json={
                 'train_model_name': 'Auto', 
                 'dataset_path': folder_path, 
-                'epochs': 20, 
+                'epochs': 5, 
                 'learning_rate': 0.0002
             }
         )
         
         response.raise_for_status()  # This will raise an error for 4xx/5xx responses
         print(f"[INFO] Training request successful: {response.status_code}")
+        time.sleep(10)
+        calibration_progress['calibration_message'] = "This can take a while"
+        time.sleep(10)
+        calibration_progress['calibration_message'] = "Please be patient"
+        time.sleep(10)
+        calibration_progress['calibration_message'] = "Calibrating model"
         threading.Thread(target=get_calibration_training_progress).start()
 
     

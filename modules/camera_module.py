@@ -126,32 +126,29 @@ class CameraModule:
         """
         try:
             previous_timestamp = None  # Track previous frame's timestamp
-            frame_rate = 30 
-            timestamp_increment = 1 / frame_rate  
-            
+            frame_rate = 30  # Frames per second
+            timestamp_increment = 1 / frame_rate
+            previous_timestamp = time.monotonic()
+
             while not self.stop_event.is_set():
-                if not self.camera_on or self.camera is None:
-                    time.sleep(1)
-                    continue
-
-                success, frame = self.camera.read()
-
-                # Ensure the frame is valid
-                if not success:
-                    logging.warning("Failed to capture a frame from the camera.")
-                    continue
-                elif frame is None or frame.size == 0:
-                    logging.warning("Captured frame is empty or invalid.")
-                    continue
-
                 current_timestamp = time.monotonic()
 
-                # Ensure monotonically increasing timestamps
-                if previous_timestamp is not None and current_timestamp <= previous_timestamp:
+                # Calculate the expected timestamp increment based on the frame rate
+                expected_timestamp = previous_timestamp + timestamp_increment
+
+                if current_timestamp < expected_timestamp:
+                    time.sleep(expected_timestamp - current_timestamp)
+
+                # Capture frame
+                success, frame = self.camera.read()
+
+                # Process and adjust timestamps accordingly
+                current_timestamp = time.monotonic()
+                if current_timestamp <= previous_timestamp:
                     current_timestamp = previous_timestamp + timestamp_increment
-                    logging.warning(f"Adjusted timestamp for monotonicity: {current_timestamp}")
 
                 previous_timestamp = current_timestamp
+
 
                 # Rotate the frame if required (specific to your camera)
                 if self.device_nr == 2:
@@ -285,7 +282,7 @@ class CameraModule:
                 return self._process_live_video_left_frame(frame)
 
             elif stream == "live-video-right":
-                return self._process_live_video_right_frame_async(frame)
+                return self._process_live_video_right_frame(frame)
 
             else:
                 logging.error(f"ERROR: Stream name not recognized: {stream}")
@@ -354,7 +351,7 @@ class CameraModule:
         logging.error("Failed to encode processed frame to JPEG")
         return None
         
-    def _process_live_video_right_frame_async(self, frame):
+    def _process_live_video_right_frame(self, frame):
         # Check if the active model is enabled and gaze correction is required
         print("RUNNING STREAM FOR: live-video-right 1")
         print("self.active_model: ", self.active_model)
@@ -374,7 +371,8 @@ class CameraModule:
 
             # Always use the latest corrected eye images from the folder
             frame = self.eyes_processor.correct_gaze(frame, self.settings['live-video-right']['extract_eyes'])
-
+            if frame.shape[2] == 4:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
         else:
             self.stop_generation()
             # self.eyes_processor.should_correct_gaze = False
@@ -383,6 +381,7 @@ class CameraModule:
         if vcam_on:
             self.vcam.send(frame)
             self.vcam.sleep_until_next_frame()
+
 
         # Encode frame and return as bytes
         ret, buffer = cv2.imencode('.jpg', frame)
@@ -393,7 +392,9 @@ class CameraModule:
 
     def _generate_eye_images_async(self, frame, extract_eyes):
         # Start a new thread to generate the eye images without blocking
-        threading.Thread(target=self._generate_eye_images, args=(frame,extract_eyes,), daemon=True).start()
+        should_extract=extract_eyes
+        extract_eyes = False
+        threading.Thread(target=self._generate_eye_images, args=(frame,should_extract,), daemon=True).start()
 
     def _generate_eye_images(self, frame, extract_eyes):
         try:
@@ -442,6 +443,7 @@ class CameraModule:
                             f.write(base64.b64decode(corrected_images["right_eye"]))
 
                         print("[SUCCESS] Corrected eye images saved locally.")
+                        extract_eyes = True
                         self.thread_running = False
                         # clear_warped_images()
                     else:
