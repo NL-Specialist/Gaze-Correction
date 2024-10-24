@@ -448,30 +448,75 @@ class Eyes:
         try:
             
             if extract_eyes:
-                (x_min, y_min), (x_max, y_max) = eye_bbox
-                eye_region = frame[y_min:y_max, x_min:x_max]
+                # Define the scaling factor
+                scale = 1
 
-                # Resize the eye image while keeping its alpha channel
-                eye_img_resized = cv2.resize(eye_img, (x_max - x_min, y_max - y_min), interpolation=cv2.INTER_LINEAR)
+                # Convert the eye landmarks from normalized coordinates to pixel coordinates
+                height, width, _ = frame.shape
+                eye_points = np.array([(int(landmark.x * width), int(landmark.y * height)) for landmark in eye_landmarks])
 
-                # Perform histogram matching on RGB channels (skip alpha)
-                eye_img_rgb = eye_img_resized[:, :, :3]
-                eye_region_rgb = eye_region[:, :, :3]
-                eye_img_matched_rgb = match_histograms(eye_img_rgb, eye_region_rgb)
+                # Calculate the bounding box around the eye landmarks
+                x_min = np.min(eye_points[:, 0])
+                print("| x_min | --> ", x_min)
+                x_max = np.max(eye_points[:, 0])
+                print("| x_max | --> ", x_max)
+                y_min = np.min(eye_points[:, 1])
+                print("| y_min | --> ", y_min)
+                y_max = np.max(eye_points[:, 1])
+                print("| y_max | --> ", y_max)
 
-                # Ensure the matched image is the same type as the eye region
-                if eye_img_matched_rgb.dtype != eye_region_rgb.dtype:
-                    eye_img_matched_rgb = eye_img_matched_rgb.astype(eye_region_rgb.dtype)
+                # Determine the dimensions of the eye region
+                eye_width = x_max - x_min
+                eye_height = y_max - y_min
 
-                # Get the alpha channel from the resized eye image
-                alpha_channel = eye_img_resized[:, :, 3] / 255.0  # Normalize alpha to [0, 1] range
+                # Apply the scaling factor to the dimensions
+                eye_width = int(eye_width * scale)
+                eye_height = int(eye_height * scale)
 
-                # Blend the matched eye image with the eye region using the alpha channel
-                for c in range(0, 3):  # Loop over the color channels (RGB)
-                    eye_region[:, :, c] = eye_img_matched_rgb[:, :, c] * alpha_channel + eye_region[:, :, c] * (1 - alpha_channel)
+                # Recalculate the x_min and y_min to center the enlarged image
+                x_min = x_min - (eye_width - (x_max - x_min)) // 2
+                y_min = y_min - (eye_height - (y_max - y_min)) // 2
 
-                # Place the blended region back into the frame
-                frame[y_min:y_max, x_min:x_max] = eye_region
+                # Ensure the new coordinates stay within the frame boundaries
+                x_min = max(0, x_min)
+                y_min = max(0, y_min)
+                x_max = min(width, x_min + eye_width)
+                y_max = min(height, y_min + eye_height)
+
+                # Resize the eye image to the new dimensions
+                resized_eye_img = cv2.resize(eye_img, (eye_width, eye_height))
+
+                # Ensure the eye image has the correct number of channels
+                if resized_eye_img.shape[2] == 4:  # Check if it has an alpha channel
+                    # Separate the color and alpha channels
+                    eye_img_rgb = resized_eye_img[:, :, :3]  # Use RGB channels
+                    alpha_mask = resized_eye_img[:, :, 3] / 255.0  # Normalize alpha mask to [0, 1] range
+
+                    # Erode the alpha mask to reduce dark edges
+                    alpha_mask = cv2.erode(alpha_mask, np.ones((2, 2), np.uint8), iterations=1)
+
+                    # Apply Gaussian blur to further soften the edges of the alpha mask
+                    alpha_mask = cv2.GaussianBlur(alpha_mask, (5, 5), 0)
+
+                    # Get the region of interest from the frame where the eye will be placed
+                    eye_region = frame[y_min:y_max, x_min:x_max]
+
+                    # Perform the blending of the eye image with the frame
+                    for c in range(0, 3):
+                        eye_region[:, :, c] = (
+                            alpha_mask * eye_img_rgb[:, :, c] + 
+                            (1 - alpha_mask) * eye_region[:, :, c]
+                        )
+
+                    # Replace the modified region in the original frame
+                    frame[y_min:y_max, x_min:x_max] = eye_region
+
+                else:
+                    # If no alpha channel, use basic blending
+                    eye_region = frame[y_min:y_min + resized_eye_img.shape[0], x_min:x_min + resized_eye_img.shape[1]]
+                    blended_eye = cv2.addWeighted(eye_region, 0, resized_eye_img, 1, 0)
+                    frame[y_min:y_min + resized_eye_img.shape[0], x_min:x_min + resized_eye_img.shape[1]] = blended_eye
+
             else:         
                 (x_min, y_min), (x_max, y_max) = eye_bbox
                 eye_region = frame[y_min:y_max, x_min:x_max]
@@ -485,7 +530,7 @@ class Eyes:
                     eye_img_matched = eye_img_matched.astype(eye_region.dtype)
 
                 # Increase the weight of the eye image to make it more prominent
-                blended_eye = cv2.addWeighted(eye_region, 0.3, eye_img_matched, 0.7, 0)
+                blended_eye = cv2.addWeighted(eye_region, 0.1, eye_img_matched, 0.9, 0)
 
                 # If the eye image has an alpha channel, blend only the RGB channels
                 if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel
@@ -504,7 +549,7 @@ class Eyes:
             raise
 
 
-            # Function to load an image from a file
+# Function to load an image from a file
 def load_image(path):
     return cv2.imread(path)
 
