@@ -285,9 +285,7 @@ class Eyes:
         try:
             print("Starting gaze correction")
 
-            # Set default paths dynamically
-            corrected_left_eye_path = os.path.abspath('generated_images/left_eye.jpg')
-            corrected_right_eye_path = os.path.abspath('generated_images/right_eye.jpg')
+            
 
             # Save the original frame for away gaze
             dest_image_path = 'destination_image.png'  # Use .png to preserve alpha channel
@@ -295,6 +293,10 @@ class Eyes:
 
 
             if extract_eyes:
+                # Set default paths dynamically
+                corrected_left_eye_path = os.path.abspath('transparent_images/left_eye.jpg')
+                corrected_right_eye_path = os.path.abspath('transparent_images/right_eye.jpg')
+
                 # Add a fully opaque alpha channel (255 for all pixels)
                 alpha_channel = np.ones((dest_image.shape[0], dest_image.shape[1]), dtype=dest_image.dtype) * 255
                 dest_image = np.dstack([dest_image, alpha_channel])
@@ -305,6 +307,10 @@ class Eyes:
                 corrected_image = cv2.imread(dest_image_path, cv2.IMREAD_UNCHANGED)
                 print(f"Reading WITH alpha channel, corrected_image.shape: {corrected_image.shape}")
             else:
+                # Set default paths dynamically
+                corrected_left_eye_path = os.path.abspath('generated_images/left_eye.jpg')
+                corrected_right_eye_path = os.path.abspath('generated_images/right_eye.jpg')
+
                 cv2.imwrite(dest_image_path, dest_image)
                 print(f"Saved frame to {dest_image_path}")
 
@@ -426,7 +432,7 @@ class Eyes:
                 eye_img_matched = eye_img_matched.astype(eye_region.dtype)
 
             # Increase the weight of the eye image to make it more prominent
-            blended_eye = cv2.addWeighted(eye_region, 0.3, eye_img_matched, 0.7, 0)
+            blended_eye = cv2.addWeighted(eye_region, 0.1, eye_img_matched, 0.9, 0)
 
             # If the eye image has an alpha channel, blend only the RGB channels
             if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel

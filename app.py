@@ -109,11 +109,12 @@ def set_correction_model():
             print(f"TOTAL TIME TO LOAD MODEL: {time.time() - start_time:.4f} seconds")
             load_model_data = load_model_response.json()
             checkpoint_list = load_model_data.get('checkpoint_list', [])
-
+            
             if not selected_model == 'disabled':
                 restore_checkpoint_response = requests.post("http://192.168.0.58:8021/restore_checkpoint/", json={"checkpoint_nr":-1})
                 if restore_checkpoint_response.status_code == 200:
                     # time.sleep(8)
+                    camera_module.thread_running = False
                     camera_module.set_active_model(ACTIVE_MODEL)
                 else:
                     print(f"[ERROR] Restoring checkpoint failed with status code {restore_checkpoint_response.status_code}, response text: {restore_checkpoint_response.text}")
@@ -840,7 +841,7 @@ def start_calibration_training(folder_path):
             json={
                 'train_model_name': 'Auto', 
                 'dataset_path': folder_path, 
-                'epochs': 5, 
+                'epochs': 8, 
                 'learning_rate': 0.0002
             }
         )
