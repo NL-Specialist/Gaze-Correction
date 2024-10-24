@@ -436,23 +436,16 @@ class CameraModule:
                         if not os.path.exists('generated_images'):
                             os.makedirs('generated_images')
 
-                        if extract_eyes:
-                            generated_left_eye_path = os.path.abspath('transparent_images/left_eye.jpg')
-                            generated_right_eye_path = os.path.abspath('transparent_images/right_eye.jpg')
-                        else:
-                            generated_left_eye_path = os.path.abspath('generated_images/left_eye.jpg')
-                            generated_right_eye_path = os.path.abspath('generated_images/right_eye.jpg')
-
                         # Save the corrected images
-                        with open(generated_left_eye_path, 'wb') as f:
+                        with open('generated_images/left_eye.jpg', 'wb') as f:
                             f.write(base64.b64decode(corrected_images["left_eye"]))
-                        with open(generated_right_eye_path, 'wb') as f:
+                        with open('generated_images/right_eye.jpg', 'wb') as f:
                             f.write(base64.b64decode(corrected_images["right_eye"]))
 
                         print("[SUCCESS] Corrected eye images saved locally.")
                         extract_eyes = True
                         self.thread_running = False
-
+                        # clear_warped_images()
                     else:
                         logging.error(f"[ERROR] Failed to correct eye images. HTTP Status: {corrected_eye_response.status_code}")
                 except requests.RequestException as e:
