@@ -71,8 +71,6 @@ epoch_count = 0
 prev_progress = -1
 dataset_exists = False
 
-device_left = "0"
-device_right = "1"
 
 prev_checkpoint_eye_type = '_left'
 
@@ -81,7 +79,7 @@ DATASETS_DIRECTORY = 'datasets'
 EYE_TYPE = 'both'  # or 'left' or 'right'
 EPOCHS = 1
 
-async def load_GAN(model_name):
+async def load_GAN(model_name, left_eye_device_type, right_eye_device_type):
     global eyes_gan_left, eyes_gan_right, generator_left, discriminator_left, generator_right, discriminator_right
     
     if model_name == 'disabled':
@@ -89,16 +87,16 @@ async def load_GAN(model_name):
         return {"status": "Model offloaded successfully.", "checkpoint_list":[]}
     
     # Initialize the generator
-    generator_left = EYES_GAN_GENERATOR(input_shape=(24, 50, 3), gpu_index=device_left)
-    generator_right = EYES_GAN_GENERATOR(input_shape=(24, 50, 3), gpu_index=device_right)
+    generator_left = EYES_GAN_GENERATOR(input_shape=(24, 50, 3), gpu_index=left_eye_device_type)
+    generator_right = EYES_GAN_GENERATOR(input_shape=(24, 50, 3), gpu_index=right_eye_device_type)
 
     # Initialize the discriminator
-    discriminator_left = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3), gpu_index=device_left)
-    discriminator_right = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3), gpu_index=device_right)
+    discriminator_left = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3), gpu_index=left_eye_device_type)
+    discriminator_right = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3), gpu_index=right_eye_device_type)
 
     # Initialize EYES_GAN
-    eyes_gan_left = EYES_GAN(model_name + '_left', generator_left, discriminator_left, device_left)
-    eyes_gan_right = EYES_GAN(model_name +'_right', generator_right, discriminator_right, device_right)
+    eyes_gan_left = EYES_GAN(model_name + '_left', generator_left, discriminator_left, left_eye_device_type)
+    eyes_gan_right = EYES_GAN(model_name +'_right', generator_right, discriminator_right, right_eye_device_type)
     
     return True
 
@@ -126,11 +124,11 @@ async def load_model(request: LoadModelRequest):
         # await offload_model()
         return {"status": "Model disabled.", "checkpoint_list":[]}
     
-    await load_GAN(model_name)
+    await load_GAN(model_name, "0", "0")
     
     # Get list of trained checkpoints
     checkpoint_list_left = await get_model_checkpoints(model_name=model_name+'_left')
-    checkpoint_list_right = await get_model_checkpoints(model_name=model_name+'_right')
+    # checkpoint_list_right = await get_model_checkpoints(model_name=model_name+'_right')
 
     return {"status": "Model loaded successfully.", "checkpoint_list":checkpoint_list_left}
 
@@ -201,16 +199,20 @@ class RestoreCheckpointRequest(BaseModel):
 async def restore_checkpoint(request: RestoreCheckpointRequest):
     global eyes_gan_left, eyes_gan_right 
     # Restore the model from the specified checkpoint
+    if eyes_gan_left == None or eyes_gan_right == None:
+        print("ERROR: Restoring checkpoint failed, eye gans not loaded")
+        return {"status": "ERROR: Restoring checkpoint failed, eye gans not loaded."}
+    
     await eyes_gan_left.restore(request.checkpoint_nr)
     await eyes_gan_right.restore(request.checkpoint_nr)
     
     return {"status": "Checkpoint restored successfully."}
 
 @app.post("/generate_image/")
-def generate_image(frame: UploadFile = File(...)):
+def generate_image(frame: UploadFile = File(...), extract_eyes: bool = Form(True)):
     global eyes_gan_left, eyes_gan_right
 
-    if eyes_gan_left is None or eyes_gan_right is None:
+    if eyes_gan_left is None :  # or eyes_gan_right is None
         logging.error("Model not loaded. Call /load_model/ first.")
         return {"error": "Model not loaded. Call /load_model/ first."}
 
@@ -253,42 +255,48 @@ def generate_image(frame: UploadFile = File(...)):
         output_left_filepath = os.path.join("generated_images", "left_eye.jpg")
         output_right_filepath = os.path.join("generated_images", "right_eye.jpg")
 
+        eyes_gan_left.predict(right_img, save_path=output_right_filepath)        
         eyes_gan_left.predict(left_img, save_path=output_left_filepath)
-        eyes_gan_right.predict(right_img, save_path=output_right_filepath)        
+        
         
         left_eye_img = cv2.imread(output_left_filepath)
         right_eye_img = cv2.imread(output_right_filepath)
 
-        # Overlay new eyes onto frame
-        eyes_processor.overlay_boxes(image, eyes_processor.left_eye_bbox, left_eye_img)
-        eyes_processor.overlay_boxes(image, eyes_processor.right_eye_bbox, right_eye_img)
-        
-        # Process the image and find face meshes
-        results = face_mesh.process(image)
+        if extract_eyes:
+            # Overlay new eyes onto frame
+            eyes_processor.overlay_boxes(image, eyes_processor.left_eye_bbox, left_eye_img)
+            eyes_processor.overlay_boxes(image, eyes_processor.right_eye_bbox, right_eye_img)
+            
+            # Process the image and find face meshes
+            results = face_mesh.process(image)
 
-        if results.multi_face_landmarks:
-            for face_landmarks in results.multi_face_landmarks:
-                # Extract landmarks for left and right eyes in correct order
-                left_eye_landmarks = [face_landmarks.landmark[i] for i in [33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 145 ]]
-                right_eye_landmarks = [face_landmarks.landmark[i] for i in [362, 398, 384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374, 380]]
-        
-                # Extract and save the left eye region with No Background
-                left_eye_image = extract_eye_region(image, left_eye_landmarks)
-                output_left_no_background_filepath = os.path.join("OUTPUT_EYES", "left_eye_transparent.png")
-                cv2.imwrite(output_left_no_background_filepath, left_eye_image)
-                print(f"[SUCCESS] Saved corrected left eye with transparent background to: {output_left_no_background_filepath}")
+            if results.multi_face_landmarks:
+                for face_landmarks in results.multi_face_landmarks:
+                    # Extract landmarks for left and right eyes in correct order
+                    left_eye_landmarks = [face_landmarks.landmark[i] for i in [33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144,]]
+                    right_eye_landmarks = [face_landmarks.landmark[i] for i in [362, 398, 384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374,]]
+            
+                    # Extract and save the left eye region with No Background
+                    left_eye_image = extract_eye_region(image, left_eye_landmarks)
+                    output_left_no_background_filepath = os.path.join("OUTPUT_EYES", "left_eye_transparent.png")
+                    cv2.imwrite(output_left_no_background_filepath, left_eye_image)
+                    print(f"[SUCCESS] Saved corrected left eye with transparent background to: {output_left_no_background_filepath}")
 
-                # Extract and save the right eye region with No Background
-                right_eye_image = extract_eye_region(image, right_eye_landmarks)
-                output_right_no_background_filepath = os.path.join("OUTPUT_EYES", "right_eye_transparent.png")
-                cv2.imwrite(output_right_no_background_filepath, right_eye_image)
-                print(f"[SUCCESS] Saved corrected right eye with transparent background to: {output_right_no_background_filepath}")
-        
-        with open(output_left_no_background_filepath, "rb") as left_eye_no_background_file, \
-                open(output_right_no_background_filepath, "rb") as right_eye_no_background_file:
-            left_eye_bytes = left_eye_no_background_file.read()
-            right_eye_bytes = right_eye_no_background_file.read()
-
+                    # Extract and save the right eye region with No Background
+                    right_eye_image = extract_eye_region(image, right_eye_landmarks)
+                    output_right_no_background_filepath = os.path.join("OUTPUT_EYES", "right_eye_transparent.png")
+                    cv2.imwrite(output_right_no_background_filepath, right_eye_image)
+                    print(f"[SUCCESS] Saved corrected right eye with transparent background to: {output_right_no_background_filepath}")
+            
+            with open(output_left_no_background_filepath, "rb") as left_eye_no_background_file, \
+                    open(output_right_no_background_filepath, "rb") as right_eye_no_background_file:
+                left_eye_bytes = left_eye_no_background_file.read()
+                right_eye_bytes = right_eye_no_background_file.read()
+        else:
+            with open(output_left_filepath, "rb") as left_eye_file, \
+                    open(output_right_filepath, "rb") as right_eye_file:
+                left_eye_bytes = left_eye_file.read()
+                right_eye_bytes = right_eye_file.read()
 
         return {
             "left_eye": base64.b64encode(left_eye_bytes).decode(),
@@ -317,7 +325,7 @@ def extract_eye_region(frame, eye_landmarks):
 
     # Add the eye region to the transparent image
     transparent_image[:, :, :3] = eye_region
-    transparent_image[:, :, 3] = mask
+    transparent_image[:, :, 3] = (mask * 0.6).astype(np.uint8)
 
     # Make black pixels transparent
     black_pixels = np.all(eye_region == [0, 0, 0], axis=-1)
@@ -403,7 +411,7 @@ async def train(request: TrainRequest):
 
     eyes_gan_dataset = EYES_GAN_DATASET(dataset_path=ACTIVE_DATASET_DIRECTORY, debug=True)
 
-    train_dataset_left, test_dataset_left, val_dataset_left = eyes_gan_dataset.prepare_datasets(eye_type='left')
+    train_dataset_left, test_dataset_left, val_dataset_left = eyes_gan_dataset.prepare_datasets(eye_type='both')
     train_dataset_right, test_dataset_right, val_dataset_right = eyes_gan_dataset.prepare_datasets(eye_type='right')
 
     EPOCHS = request.epochs
@@ -429,14 +437,14 @@ async def train(request: TrainRequest):
             request.learning_rate
         )
 
-    await load_GAN(model_name)
+    await load_GAN(model_name, "0", "1")
 
     if eyes_gan_left is None or eyes_gan_right is None:
         raise HTTPException(status_code=400, detail="Model not loaded. Call /load_model/ first.")
 
     # Schedule both training tasks in the background
     asyncio.create_task(train_model_left())
-    asyncio.create_task(train_model_right())
+    # asyncio.create_task(train_model_right())
 
     epoch_count = 0
     prev_checkpoint_eye_type = '_left'

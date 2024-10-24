@@ -47,6 +47,57 @@ class EYES_GAN:
             self.disc_loss = []
             self.progress = []
             self.step = 0
+            
+            self.max_retries = 1
+            self.upper_threshold = 6  # Define a threshold for quality checking
+            self.lower_threshold = -6
+            self.best_score = float('-inf')
+            self.best_prediction = None
+
+    # def predict(self, input_image, save_path):
+    #     # Use threading to run the prediction in a non-blocking way
+    #     threading.Thread(target=self._run_prediction, args=(input_image, save_path), daemon=True).start()
+
+    # def _run_prediction(self, input_image, save_path):
+    #     if isinstance(input_image, np.ndarray):
+    #         input_image = tf.convert_to_tensor(input_image, dtype=tf.float32)
+
+    #     try:
+    #         for attempt in range(self.max_retries):
+    #             print(f"Attempt {attempt + 1} to generate an image.")
+
+    #             with tf.device(self.device):
+    #                 prediction = self.generator.generator(input_image, training=True)
+    #                 self._save_image(prediction, save_path)
+
+    #                 disc_output = self.discriminator.discriminator([input_image, prediction], training=True)
+    #                 disc_score = tf.reduce_mean(disc_output).numpy()
+
+    #                 if not np.isnan(disc_score):
+    #                     print(f"Discriminator score: {disc_score}")
+
+    #                     if self.lower_threshold <= disc_score <= self.upper_threshold:
+    #                         print(f"Image passed the quality check with score {disc_score}. Saving and returning.")
+    #                         self._save_image(prediction, save_path)
+    #                         return prediction
+
+    #                     if disc_score > self.best_score:
+    #                         self.best_score = disc_score
+    #                         self.best_prediction = prediction
+    #                 else:
+    #                     print("[WARNING] Discriminator returned NaN score. Skipping this attempt.")
+
+    #         if self.best_prediction is None:
+    #             print("[ERROR] No valid image could be generated. Returning None.")
+    #             return None
+
+    #         print(f"No image met the quality threshold after {self.max_retries} attempts. Saving the best one with score {self.best_score}.")
+    #         self._save_image(self.best_prediction, save_path)
+    #         return self.best_prediction
+
+    #     except Exception as e:
+    #         print(f"[ERROR] Error during GAN prediction: {str(e)}")
+    #         raise e  # Re-raise to allow further handling outside if needed
 
     def predict(self, input_image, save_path='generated_image.png'):
         # Use asyncio.to_thread() to run the prediction in a non-blocking way
