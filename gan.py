@@ -128,7 +128,7 @@ async def load_model(request: LoadModelRequest):
     
     # Get list of trained checkpoints
     checkpoint_list_left = await get_model_checkpoints(model_name=model_name+'_left')
-    # checkpoint_list_right = await get_model_checkpoints(model_name=model_name+'_right')
+    checkpoint_list_right = await get_model_checkpoints(model_name=model_name+'_right')
 
     return {"status": "Model loaded successfully.", "checkpoint_list":checkpoint_list_left}
 
@@ -209,7 +209,7 @@ async def restore_checkpoint(request: RestoreCheckpointRequest):
     return {"status": "Checkpoint restored successfully."}
 
 @app.post("/generate_image/")
-def generate_image(frame: UploadFile = File(...), extract_eyes: bool = Form(True)):
+async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = Form(True)):
     global eyes_gan_left, eyes_gan_right
 
     if eyes_gan_left is None :  # or eyes_gan_right is None
@@ -255,8 +255,9 @@ def generate_image(frame: UploadFile = File(...), extract_eyes: bool = Form(True
         output_left_filepath = os.path.join("generated_images", "left_eye.jpg")
         output_right_filepath = os.path.join("generated_images", "right_eye.jpg")
 
-        eyes_gan_left.predict(right_img, save_path=output_right_filepath)        
-        eyes_gan_left.predict(left_img, save_path=output_left_filepath)
+             
+        await eyes_gan_left.predict(left_img, save_path=output_left_filepath)
+        await eyes_gan_right.predict(right_img, save_path=output_right_filepath)   
         
         
         left_eye_img = cv2.imread(output_left_filepath)
@@ -266,6 +267,8 @@ def generate_image(frame: UploadFile = File(...), extract_eyes: bool = Form(True
             # Overlay new eyes onto frame
             eyes_processor.overlay_boxes(image, eyes_processor.left_eye_bbox, left_eye_img)
             eyes_processor.overlay_boxes(image, eyes_processor.right_eye_bbox, right_eye_img)
+            
+            cv2.imwrite('image_test.png', image)
             
             # Process the image and find face meshes
             results = face_mesh.process(image)
@@ -325,17 +328,22 @@ def extract_eye_region(frame, eye_landmarks):
 
     # Add the eye region to the transparent image
     transparent_image[:, :, :3] = eye_region
-    transparent_image[:, :, 3] = (mask * 0.6).astype(np.uint8)
+    transparent_image[:, :, 3] = mask
 
-    # Make black pixels transparent
-    black_pixels = np.all(eye_region == [0, 0, 0], axis=-1)
-    transparent_image[black_pixels, 3] = 0
+    # Make the region outside the eye partially transparent (20% transparency, 80% opacity)
+    # First copy the full original frame to the transparent image
+    transparent_image[:, :, :3] = frame
+    transparent_image[:, :, 3] = 200  # 80% opacity for the entire frame
 
-    # Crop the transparent image
+    # Set the eye region to fully opaque (alpha = 255)
+    transparent_image[mask == 255, 3] = 255
+
+    # Crop the transparent image to the eye region
     x, y, w, h = cv2.boundingRect(eye_coords)
     cropped_eye = transparent_image[y:y+h, x:x+w]
 
     return cropped_eye
+
 
 
 def read_image_sync(file: UploadFile):
@@ -411,7 +419,7 @@ async def train(request: TrainRequest):
 
     eyes_gan_dataset = EYES_GAN_DATASET(dataset_path=ACTIVE_DATASET_DIRECTORY, debug=True)
 
-    train_dataset_left, test_dataset_left, val_dataset_left = eyes_gan_dataset.prepare_datasets(eye_type='both')
+    train_dataset_left, test_dataset_left, val_dataset_left = eyes_gan_dataset.prepare_datasets(eye_type='left')
     train_dataset_right, test_dataset_right, val_dataset_right = eyes_gan_dataset.prepare_datasets(eye_type='right')
 
     EPOCHS = request.epochs
@@ -444,7 +452,7 @@ async def train(request: TrainRequest):
 
     # Schedule both training tasks in the background
     asyncio.create_task(train_model_left())
-    # asyncio.create_task(train_model_right())
+    asyncio.create_task(train_model_right())
 
     epoch_count = 0
     prev_checkpoint_eye_type = '_left'

@@ -99,9 +99,9 @@ class EYES_GAN:
     #         print(f"[ERROR] Error during GAN prediction: {str(e)}")
     #         raise e  # Re-raise to allow further handling outside if needed
 
-    def predict(self, input_image, save_path='generated_image.png'):
+    async def predict(self, input_image, save_path='generated_image.png'):
         # Use asyncio.to_thread() to run the prediction in a non-blocking way
-        threading.Thread(target=self._run_prediction, args=(input_image,save_path,), daemon=True).start()
+        return await asyncio.to_thread(self._run_prediction, input_image, save_path)
 
     def _run_prediction(self, input_image, save_path):
         with tf.device(self.device):
