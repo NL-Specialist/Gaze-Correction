@@ -206,7 +206,17 @@ async def restore_checkpoint(request: RestoreCheckpointRequest):
     await eyes_gan_left.restore(request.checkpoint_nr)
     await eyes_gan_right.restore(request.checkpoint_nr)
     
+    print('RESTORED CHECKPOINT NUMBER: ', request.checkpoint_nr)
+    
     return {"status": "Checkpoint restored successfully."}
+
+def load_image_as_tensor(image_path):
+    image = tf.io.read_file(image_path)  # Read the image file
+    image = tf.image.decode_image(image, channels=3)  # Decode the image into a tensor
+    image = tf.image.convert_image_dtype(image, tf.float32)  # Convert to [0, 1] float
+    image = (image * 2.0) - 1.0  # Normalize to [-1, 1]
+    image = tf.expand_dims(image, axis=0)  # Add a batch dimension
+    return image
 
 @app.post("/generate_image/")
 async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = Form(True)):
@@ -247,29 +257,29 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
         cv2.imwrite(input_left_eye_path, left_img)
         cv2.imwrite(input_right_eye_path, right_img)
         
+        left_img = load_image_as_tensor(input_left_eye_path)
+        right_img = load_image_as_tensor(input_right_eye_path)
+        
         # Expand dims before passing to GAN model (to match expected input shape)
-        left_img = np.expand_dims(left_img, axis=0)  # Shape becomes (1, 24, 50, 3)
-        right_img = np.expand_dims(right_img, axis=0)  # Shape becomes (1, 24, 50, 3)
+        # left_img = np.expand_dims(left_img, axis=0)  # Shape becomes (1, 24, 50, 3)
+        # right_img = np.expand_dims(right_img, axis=0)  # Shape becomes (1, 24, 50, 3)
 
         # GAN model prediction and returning corrected images (remains the same)
         output_left_filepath = os.path.join("generated_images", "left_eye.jpg")
         output_right_filepath = os.path.join("generated_images", "right_eye.jpg")
 
-             
         await eyes_gan_left.predict(left_img, save_path=output_left_filepath)
         await eyes_gan_right.predict(right_img, save_path=output_right_filepath)   
         
         
         left_eye_img = cv2.imread(output_left_filepath)
         right_eye_img = cv2.imread(output_right_filepath)
-
+        
         if extract_eyes:
             # Overlay new eyes onto frame
             eyes_processor.overlay_boxes(image, eyes_processor.left_eye_bbox, left_eye_img)
             eyes_processor.overlay_boxes(image, eyes_processor.right_eye_bbox, right_eye_img)
-            
-            # cv2.imwrite('image_test.png', image)
-            
+
             # Process the image and find face meshes
             results = face_mesh.process(image)
 
@@ -303,7 +313,7 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
 
         return {
             "left_eye": base64.b64encode(left_eye_bytes).decode(),
-            "right_eye": base64.b64encode(right_eye_bytes).decode()
+            "right_eye": base64.b64encode(right_eye_bytes).decode(),
         }
 
     except Exception as e:
@@ -352,8 +362,9 @@ def extract_eye_region_with_gradient(frame, eye_landmarks, bounding_box, eye_reg
     # Copy the original frame to the transparent image
     transparent_image[:, :, :3] = frame
 
-    # Extract bounding box coordinates
-    (x_min, y_min), (x_max, y_max) = bounding_box
+    # Calculate the exact region around the eye based on the landmarks
+    x_min, x_max = np.min(eye_coords[:, 0]), np.max(eye_coords[:, 0])
+    y_min, y_max = np.min(eye_coords[:, 1]), np.max(eye_coords[:, 1])
 
     # Apply custom opacity around the eye region
     gradient_mask = apply_custom_opacity(mask, eye_region_opacity=eye_region_opacity)
@@ -365,7 +376,7 @@ def extract_eye_region_with_gradient(frame, eye_landmarks, bounding_box, eye_reg
     mask_cropped = mask[y_min:y_max, x_min:x_max]
     transparent_image[y_min:y_max, x_min:x_max][mask_cropped == 255, 3] = eye_region_opacity
 
-    # Crop the transparent image to the bounding box region
+    # Crop the transparent image to the exact eye region based on eye coordinates
     cropped_eye = transparent_image[y_min:y_max, x_min:x_max]
 
     return cropped_eye
