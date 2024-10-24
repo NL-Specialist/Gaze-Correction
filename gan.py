@@ -280,13 +280,13 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
                     right_eye_landmarks = [face_landmarks.landmark[i] for i in [362, 398, 384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374,]]
             
                     # Extract and save the left eye region with No Background
-                    left_eye_image = extract_eye_region(image, left_eye_landmarks, eyes_processor.left_eye_bbox)
+                    left_eye_image = extract_eye_region_with_gradient(image, left_eye_landmarks, eyes_processor.left_eye_bbox)
                     output_left_no_background_filepath = os.path.join("OUTPUT_EYES", "left_eye_transparent.png")
                     cv2.imwrite(output_left_no_background_filepath, left_eye_image)
                     print(f"[SUCCESS] Saved corrected left eye with transparent background to: {output_left_no_background_filepath}")
 
                     # Extract and save the right eye region with No Background
-                    right_eye_image = extract_eye_region(image, right_eye_landmarks, eyes_processor.right_eye_bbox)
+                    right_eye_image = extract_eye_region_with_gradient(image, right_eye_landmarks, eyes_processor.right_eye_bbox)
                     output_right_no_background_filepath = os.path.join("OUTPUT_EYES", "right_eye_transparent.png")
                     cv2.imwrite(output_right_no_background_filepath, right_eye_image)
                     print(f"[SUCCESS] Saved corrected right eye with transparent background to: {output_right_no_background_filepath}")
@@ -310,7 +310,33 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
         logging.error(f"[ERROR] An error occurred during image generation: {str(e)}")
         return {"error": str(e)}
 
-def extract_eye_region(frame, eye_landmarks, bounding_box):
+
+def apply_custom_opacity(mask, eye_region_opacity=180, border_width=2, start_opacity=120, decrement=20):
+    """
+    Apply a custom gradient of transparency around the eye region.
+    Opacity decreases by `decrement` starting from `start_opacity` after `border_width` pixels from the eye region.
+    `eye_region_opacity` allows control over the opacity of the eye region itself.
+    """
+    # Calculate the distance from the eye region
+    distances = cv2.distanceTransform(255 - mask, cv2.DIST_L2, 3)
+
+    # Create an opacity mask initialized to 0 (fully transparent)
+    gradient_mask = np.zeros_like(mask, dtype=np.uint8)
+
+    # Apply opacity to pixels within the eye region (fully opaque or as specified by eye_region_opacity)
+    gradient_mask[mask == 255] = eye_region_opacity
+
+    # Apply border opacity (200) for the region within border_width distance from the eye region
+    gradient_mask[(distances > 0) & (distances <= border_width)] = start_opacity
+
+    # Gradually decrease opacity for pixels beyond the border width
+    for step in range(border_width + 1, int(distances.max()) + 1):
+        opacity_value = max(start_opacity - (step - border_width) * decrement, 0)
+        gradient_mask[distances == step] = opacity_value
+
+    return gradient_mask
+
+def extract_eye_region_with_gradient(frame, eye_landmarks, bounding_box, eye_region_opacity=255):
     h, w, _ = frame.shape
 
     # Convert landmarks to 2D pixel coordinates
@@ -329,17 +355,21 @@ def extract_eye_region(frame, eye_landmarks, bounding_box):
     # Extract bounding box coordinates
     (x_min, y_min), (x_max, y_max) = bounding_box
 
-    # Make the whole frame inside the bounding box semi-transparent (20% transparency)
-    transparent_image[y_min:y_max, x_min:x_max, 3] = 60  # 80% opacity for the bounding box
+    # Apply custom opacity around the eye region
+    gradient_mask = apply_custom_opacity(mask, eye_region_opacity=eye_region_opacity)
 
-    # Set the eye region within the bounding box to fully opaque (alpha = 255)
+    # Apply the gradient opacity to the entire frame's alpha channel
+    transparent_image[:, :, 3] = gradient_mask  # Apply the gradient to the alpha channel
+
+    # Ensure that the eye region has the desired opacity
     mask_cropped = mask[y_min:y_max, x_min:x_max]
-    transparent_image[y_min:y_max, x_min:x_max][mask_cropped == 255, 3] = 255
+    transparent_image[y_min:y_max, x_min:x_max][mask_cropped == 255, 3] = eye_region_opacity
 
     # Crop the transparent image to the bounding box region
     cropped_eye = transparent_image[y_min:y_max, x_min:x_max]
 
     return cropped_eye
+
 
 
 

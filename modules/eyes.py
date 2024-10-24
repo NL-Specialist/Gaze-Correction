@@ -426,7 +426,7 @@ class Eyes:
                 eye_img_matched = eye_img_matched.astype(eye_region.dtype)
 
             # Increase the weight of the eye image to make it more prominent
-            blended_eye = cv2.addWeighted(eye_region, 0.3, eye_img_matched, 0.7, 0)
+            blended_eye = cv2.addWeighted(eye_region, 0, eye_img_matched, 1, 0)
 
             # If the eye image has an alpha channel, blend only the RGB channels
             if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel
