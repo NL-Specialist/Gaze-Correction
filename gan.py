@@ -268,7 +268,7 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
             eyes_processor.overlay_boxes(image, eyes_processor.left_eye_bbox, left_eye_img)
             eyes_processor.overlay_boxes(image, eyes_processor.right_eye_bbox, right_eye_img)
             
-            cv2.imwrite('image_test.png', image)
+            # cv2.imwrite('image_test.png', image)
             
             # Process the image and find face meshes
             results = face_mesh.process(image)
@@ -280,13 +280,13 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
                     right_eye_landmarks = [face_landmarks.landmark[i] for i in [362, 398, 384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374,]]
             
                     # Extract and save the left eye region with No Background
-                    left_eye_image = extract_eye_region(image, left_eye_landmarks)
+                    left_eye_image = extract_eye_region(image, left_eye_landmarks, eyes_processor.left_eye_bbox)
                     output_left_no_background_filepath = os.path.join("OUTPUT_EYES", "left_eye_transparent.png")
                     cv2.imwrite(output_left_no_background_filepath, left_eye_image)
                     print(f"[SUCCESS] Saved corrected left eye with transparent background to: {output_left_no_background_filepath}")
 
                     # Extract and save the right eye region with No Background
-                    right_eye_image = extract_eye_region(image, right_eye_landmarks)
+                    right_eye_image = extract_eye_region(image, right_eye_landmarks, eyes_processor.right_eye_bbox)
                     output_right_no_background_filepath = os.path.join("OUTPUT_EYES", "right_eye_transparent.png")
                     cv2.imwrite(output_right_no_background_filepath, right_eye_image)
                     print(f"[SUCCESS] Saved corrected right eye with transparent background to: {output_right_no_background_filepath}")
@@ -310,39 +310,38 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
         logging.error(f"[ERROR] An error occurred during image generation: {str(e)}")
         return {"error": str(e)}
 
-def extract_eye_region(frame, eye_landmarks):
+def extract_eye_region(frame, eye_landmarks, bounding_box):
     h, w, _ = frame.shape
 
     # Convert landmarks to 2D pixel coordinates
     eye_coords = np.array([(int(landmark.x * w), int(landmark.y * h)) for landmark in eye_landmarks], np.int32)
 
-    # Create a mask
+    # Create a mask for the eye region based on the landmarks
     mask = np.zeros((h, w), dtype=np.uint8)
     cv2.fillPoly(mask, [eye_coords], 255)
 
-    # Create a transparent background
+    # Create a transparent image with alpha channel
     transparent_image = np.zeros((h, w, 4), dtype=np.uint8)
 
-    # Copy the original frame where the mask is white
-    eye_region = cv2.bitwise_and(frame, frame, mask=mask)
-
-    # Add the eye region to the transparent image
-    transparent_image[:, :, :3] = eye_region
-    transparent_image[:, :, 3] = mask
-
-    # Make the region outside the eye partially transparent (20% transparency, 80% opacity)
-    # First copy the full original frame to the transparent image
+    # Copy the original frame to the transparent image
     transparent_image[:, :, :3] = frame
-    transparent_image[:, :, 3] = 200  # 80% opacity for the entire frame
 
-    # Set the eye region to fully opaque (alpha = 255)
-    transparent_image[mask == 255, 3] = 255
+    # Extract bounding box coordinates
+    (x_min, y_min), (x_max, y_max) = bounding_box
 
-    # Crop the transparent image to the eye region
-    x, y, w, h = cv2.boundingRect(eye_coords)
-    cropped_eye = transparent_image[y:y+h, x:x+w]
+    # Make the whole frame inside the bounding box semi-transparent (20% transparency)
+    transparent_image[y_min:y_max, x_min:x_max, 3] = 60  # 80% opacity for the bounding box
+
+    # Set the eye region within the bounding box to fully opaque (alpha = 255)
+    mask_cropped = mask[y_min:y_max, x_min:x_max]
+    transparent_image[y_min:y_max, x_min:x_max][mask_cropped == 255, 3] = 255
+
+    # Crop the transparent image to the bounding box region
+    cropped_eye = transparent_image[y_min:y_max, x_min:x_max]
 
     return cropped_eye
+
+
 
 
 
