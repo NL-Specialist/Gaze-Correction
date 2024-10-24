@@ -465,6 +465,38 @@ h1 {
     color: white;
 }
 
+.context-menu {
+  position: absolute;
+  display: none;
+  background: linear-gradient(135deg, #1e2a38 0%, #3d5a80 150%);
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  padding: 8px 0;
+  list-style-type: none;
+  min-width: 180px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.context-menu-item {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-family: 'Arial', sans-serif;
+  font-size: 14px;
+  color: white;
+  transition: background 0.3s ease, transform 0.2s ease;
+}
+
+.context-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Optional: Add a subtle separation between the items */
+.context-menu-item:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
 #statusMessage {
     display: flex;
     justify-content: center;

@@ -54,6 +54,15 @@ class CameraModule:
         self.vcam = self.init_vcam(640, 480)  # For webcam
         # self.vcam = self.init_vcam(960, 540)    # For iphone
 
+    def set_active_camera(self, camera_index):
+        try:
+            self.device_nr = camera_index
+            return True
+        except Exception as e:
+            print(f"Error in set active camera: {e}")
+            return False
+        
+
     def set_active_model(self, active_model):
         self.active_model = active_model
         return True
@@ -117,6 +126,9 @@ class CameraModule:
         """
         try:
             previous_timestamp = None  # Track previous frame's timestamp
+            frame_rate = 30 
+            timestamp_increment = 1 / frame_rate  
+            
             while not self.stop_event.is_set():
                 if not self.camera_on or self.camera is None:
                     time.sleep(1)
@@ -125,14 +137,14 @@ class CameraModule:
                 success, frame = self.camera.read()
 
                 # Ensure the frame is valid
-                if not success or frame is None or frame.size == 0:
-                    logging.warning("Invalid or empty frame captured. Skipping this frame.")
+                if not success:
+                    logging.warning("Failed to capture a frame from the camera.")
+                    continue
+                elif frame is None or frame.size == 0:
+                    logging.warning("Captured frame is empty or invalid.")
                     continue
 
-                current_timestamp = time.time()
-
-                frame_rate = 20  # Set your camera's frame rate here
-                timestamp_increment = 1 / frame_rate
+                current_timestamp = time.monotonic()
 
                 # Ensure monotonically increasing timestamps
                 if previous_timestamp is not None and current_timestamp <= previous_timestamp:
@@ -155,77 +167,48 @@ class CameraModule:
 
                 # Check if the frame queue is full and discard the oldest frame if necessary
                 if self.frame_queue.full():
-                    logging.warning("Frame queue is full. Clearing queue to prevent overflow.")
-                    self.frame_queue.queue.clear()  # Clear the queue to handle the backlog
+                    logging.warning("Frame queue is full. Dropping the oldest frame.")
+                    self.frame_queue.get()  # Drop the oldest frame
 
                 # Add the valid frame to the queue
                 self.frame_queue.put(frame_bytes)
 
                 # Update the latest valid frame
-                self.latest_frame = frame
+                self.latest_frame = frame      
 
         except Exception as e:
-            logging.error(f"Error in _generate_frames: {e}")
+            logging.error(f"Error in _generate_frames: {e}", exc_info=True)
 
 
 
-    def capture_frame_from_queue(self, dataset_name, camera_direction, total_images):
-        print(f"capture_frame_from_queue called with: dataset_name={dataset_name}, camera_direction={camera_direction}")
-        
+
+    def capture_frame_from_queue(self, image_dir):
         try:
-            # Set up dataset directory once
-            dataset_dir = os.path.join("datasets", dataset_name)
-            out_dir = os.path.join(dataset_dir, "at_camera" if camera_direction == "lookingAtCamera" else "away")
-            os.makedirs(out_dir, exist_ok=True)
-
-            # Use globbing or regex to avoid parsing filenames manually
-            existing_image_numbers = sorted(
-                [int(f.split('_')[1]) for f in os.listdir(out_dir) if f.startswith("image_") and f.split('_')[1].isdigit()],
-                reverse=True
-            )
-            
-            image_number = existing_image_numbers[0] + 1 if existing_image_numbers else 1
-
-            # Buffer to store frames
-            frame_buffer = []
-
-            # Capture the frames
-            for i in range(total_images):
-                print(f"Attempting to capture frame {i+1} from queue")
-                frame_bytes = self.frame_queue.get()
-                frame =  cv2.imdecode(np.frombuffer(frame_bytes, np.uint8), cv2.IMREAD_COLOR)
-
-                if frame is None:
-                    print("No frame available to capture")
-                    raise RuntimeError("Failed to capture frame from queue")
-                else:
-                    print(f"Frame {i+1} captured successfully, size: {frame.shape}")
-                
-                # Append the captured frame to the buffer
-                frame_buffer.append((frame, image_number))
-                image_number += 1
-                time.sleep(0.035)
-
-            # After capturing all frames, process the buffer and save the images
-            for i, (frame, img_num) in enumerate(frame_buffer):
-                image_dir = os.path.join(out_dir, f"image_{img_num}")
-                os.makedirs(image_dir, exist_ok=True)
-
-                # Save full frame
-                cv2.imwrite(os.path.join(image_dir, 'full_frame.jpg'), frame)
-
-                # Process and save left eye
-                self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
-                if self.left_eye_frame is not None and self.left_eye_frame.size != 0:
-                    cv2.imwrite(os.path.join(image_dir, 'left_eye.jpg'), self.left_eye_frame)
-
-                # Process and save right eye
-                self.right_eye_frame = self.eyes_processor.get_right_eye_region(frame, False)
-                if self.right_eye_frame is not None and self.right_eye_frame.size != 0:
-                    cv2.imwrite(os.path.join(image_dir, 'right_eye.jpg'), self.right_eye_frame)
-
-            logging.debug("All frames captured and saved successfully")
-
+            logging.debug("Attempting to capture frame from queue")
+            if self.latest_frame is None:
+                logging.error("No frame available to capture")
+                raise RuntimeError("Failed to capture frame from queue")
+    
+            frame = self.latest_frame
+    
+            # Save full frame
+            cv2.imwrite(os.path.join(image_dir, 'full_frame.jpg'), frame)
+    
+            # Process and save left eye
+            self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame)
+            if self.left_eye_frame is not None and self.left_eye_frame.size != 0:
+                cv2.imwrite(os.path.join(image_dir, 'left_eye.jpg'), self.left_eye_frame)
+            else:
+                logging.warning("No left eye capture_region found")
+    
+            # Process and save right eye
+            self.right_eye_frame = self.eyes_processor.get_right_eye_region(frame)
+            if self.right_eye_frame is not None and self.right_eye_frame.size != 0:
+                cv2.imwrite(os.path.join(image_dir, 'right_eye.jpg'), self.right_eye_frame)
+            else:
+                logging.warning("No right eye capture_region found")
+    
+            logging.debug("Frame capture from queue completed")
         except Exception as e:
             logging.error(f"Error in capture_frame_from_queue: {e}")
             raise
@@ -272,7 +255,7 @@ class CameraModule:
             self.settings['live-video-1'] = {
                 'show_face_mesh': False,
                 'classify_gaze': False,
-                'draw_rectangles': False,
+                'draw_rectangles': True,
                 'show_eyes': False,
                 'show_mouth': False,
                 'show_face_outline': False,
@@ -349,9 +332,9 @@ class CameraModule:
 
     def _process_live_video_1_frame(self, frame):
         processed_frame = self.eyes_processor.draw_selected_landmarks(
-            frame, show_eyes=False, show_mouth=False, show_face_outline=False, show_text=False)
+            frame, show_eyes=self.settings['live-video-1']['show_eyes'], show_mouth=self.settings['live-video-1']['show_mouth'], show_face_outline=self.settings['live-video-1']['show_face_outline'], show_text=self.settings['live-video-1']['show_text'])
         processed_frame = self.eyes_processor.process_frame(
-            processed_frame, show_face_mesh=False, classify_gaze=False, draw_rectangles=True)
+            processed_frame, show_face_mesh=self.settings['live-video-1']['show_face_mesh'], classify_gaze=self.settings['live-video-1']['classify_gaze'], draw_rectangles=self.settings['live-video-1']['draw_rectangles'])
         ret, buffer = cv2.imencode('.jpg', processed_frame)
         if ret:
             return buffer.tobytes()
@@ -384,7 +367,7 @@ class CameraModule:
             if not self.thread_running:
                 with self.lock:  # Acquire lock to prevent race conditions
                     if not self.thread_running:  # Double check within the lock
-                        self._generate_eye_images_async(frame)
+                        self._generate_eye_images_async(frame, self.settings['live-video-right']['extract_eyes'])
                         self.thread_running = True
             else:
                 print("Thread already running, skipping image generation")
@@ -408,11 +391,11 @@ class CameraModule:
         else:
             logging.error("Failed to encode frame")
 
-    def _generate_eye_images_async(self, frame):
+    def _generate_eye_images_async(self, frame, extract_eyes):
         # Start a new thread to generate the eye images without blocking
-        threading.Thread(target=self._generate_eye_images, args=(frame,), daemon=True).start()
+        threading.Thread(target=self._generate_eye_images, args=(frame,extract_eyes,), daemon=True).start()
 
-    def _generate_eye_images(self, frame):
+    def _generate_eye_images(self, frame, extract_eyes):
         try:
             start_time = time.time()
             print("[INFO] Starting image generation for both eyes...")
@@ -433,10 +416,14 @@ class CameraModule:
                     "frame": ("full_frame.jpg", image_data.tobytes(), "image/jpeg"),
                 }   
 
+                data = {
+                            "extract_eyes": str(extract_eyes),  # Send as a string since form data usually deals with strings
+                        }
+
                 try:
                     # Make the POST request synchronously using requests
                     response_start_time = time.time()
-                    corrected_eye_response = requests.post("http://192.168.0.58:8021/generate_image/", files=files)
+                    corrected_eye_response = requests.post("http://192.168.0.58:8021/generate_image/", files=files, data=data)
                     response_time = time.time() - response_start_time
                     print(f"[INFO] Response received for both eyes in {response_time:.2f} seconds.")
 

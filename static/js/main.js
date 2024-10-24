@@ -39,6 +39,8 @@ function toggleFlash() {
     disableFlashButton(flashButton);
 }
 
+
+
 function startHold() {
     const flashIcon = document.getElementById('flashIcon');
     const flashButton = document.getElementById('flashButton');
@@ -861,44 +863,32 @@ function start_calibration_procedure() {
 
     async function captureImages(totalImages, payload) {
         const progressDiv = document.querySelector('.calibration-progress');
-        const capturePromises = [];
-    
-        progressDiv.textContent = `Capturing ${totalImages} Images`;
-        
-        payload['totalImages'] = totalImages;
 
-        const capturePromise = fetch('/backend/capture-images', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-        })
-        .then(response => {
-            if (response.ok) {
-                return response.json();
-            } else {
-                return response.json().then(errorData => {
-                    throw new Error(`Failed to capture images: ${errorData.error}`);
+        for (let i = 0; i < totalImages; i++) {
+            progressDiv.textContent = `Capturing Image ${i + 1}/${totalImages}`;
+            try {
+                const response = await fetch('/backend/capture-images', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
                 });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log(result.message);
+                } else {
+                    const errorData = await response.json();
+                    console.log(`Failed to capture images: ${errorData.error}`);
+                }
+            } catch (error) {
+                console.error('Error capturing images:', error);
+                alert('Error capturing images.');
+                break; // Exit the loop if there's an error
             }
-        })
-        .then(result => {
-            console.log(result.message);
-        })
-        .catch(error => {
-            console.error('Error capturing images:', error);
-        });
-    
-        capturePromises.push(capturePromise);
-        
-    
-        try {
-            await Promise.all(capturePromises);
-        } catch (error) {
-            alert('Error capturing one or more images.');
         }
-    
+
         // Clear the progress text after capturing images
         progressDiv.textContent = '';
     }
@@ -1577,42 +1567,30 @@ document.addEventListener('DOMContentLoaded', (event) => {
             }else{
                 total_images = nr_images;
             }
-            
-            const capturePromises = [];
-            payload['totalImages'] = total_images;
-            progressDiv.textContent = `Capturing ${total_images} Images`;
-            const capturePromise = fetch('/backend/capture-images', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
-            })
-            .then(response => {
-                if (response.ok) {
-                    return response.json();
-                } else {
-                    return response.json().then(errorData => {
-                        throw new Error(`Failed to capture images: ${errorData.error}`);
+
+            for (let i = 0; i < total_images; i++) {
+                progressDiv.textContent = `Image ${i + 1}/${total_images}`;
+                try {
+                    const response = await fetch('/backend/capture-images', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
                     });
+        
+                    if (response.ok) {
+                        const result = await response.json();
+                        console.log(result.message);
+                    } else {
+                        const errorData = await response.json();
+                        console.log(`Failed to capture images: ${errorData.error}`);
+                    }
+                } catch (error) {
+                    console.error('Error capturing images:', error);
+                    alert('Error capturing images.');
                 }
-            })
-            .then(result => {
-                console.log(result.message);
-            })
-            .catch(error => {
-                console.error('Error capturing images:', error);
-            });
-        
-            capturePromises.push(capturePromise);
-            
-        
-            try {
-                await Promise.all(capturePromises);
-            } catch (error) {
-                alert('Error capturing one or more images.');
             }
-            
 
             bigRedCircle.style.display = 'none';  // Hide the red circle when looking at the camera
         
@@ -1629,7 +1607,91 @@ document.addEventListener('DOMContentLoaded', (event) => {
         alert("Dataset Captured Successfully")
     }
     
-     
+    // const statusMessage = document.getElementById('statusMessage');
+    const contextMenu = document.getElementById('contextMenu');
+    
+    // Add event listener to show context menu on right-click
+    statusMessage.addEventListener('contextmenu', (event) => {
+      event.preventDefault(); // Prevent default context menu
+      showContextMenu(event);
+    });
+    
+    // Add event listener to handle context menu clicks
+    contextMenu.addEventListener('click', (event) => {
+      if (event.target.classList.contains('context-menu-item')) {
+        const cameraIndex = event.target.getAttribute('data-index');
+        setCamera(cameraIndex);
+        hideContextMenu();
+      }
+    });
+    
+    // Hide the context menu when clicking outside
+    window.addEventListener('click', (event) => {
+      if (event.target !== contextMenu && !contextMenu.contains(event.target)) {
+        hideContextMenu();
+      }
+    });
+    
+    function showContextMenu(event) {
+        event.preventDefault();
+      
+        // Get the height of the context menu
+        const menuHeight = contextMenu.offsetHeight;
+        const menuWidth = contextMenu.offsetWidth;
+      
+        // Calculate available space below the cursor
+        const availableSpaceBelow = window.innerHeight - event.pageY;
+        const availableSpaceRight = window.innerWidth - event.pageX;
+      
+        // Default to showing the menu below the click
+        let top = event.pageY;
+        let left = event.pageX;
+      
+        // If there's not enough space below, show it above the cursor
+        if (availableSpaceBelow < menuHeight) {
+          top = event.pageY - menuHeight;
+        }
+      
+        // If there's not enough space to the right, show it to the left
+        if (availableSpaceRight < menuWidth) {
+          left = event.pageX - menuWidth;
+        }
+      
+        // Apply the calculated position
+        contextMenu.style.display = 'block';
+        contextMenu.style.left = `${left}px`;
+        contextMenu.style.top = `${top}px`;
+      }
+    
+    // Function to hide the context menu
+    function hideContextMenu() {
+      contextMenu.style.display = 'none';
+    }
+    
+    // Function to send the selected camera index to the backend
+    function setCamera(index) {
+        console.log("Setting camera: ", index)
+        if (cameraOn){
+            toggleCamera();
+        }
+    
+        fetch('/set_camera', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ cameraIndex: index }),
+        })
+        .then(response => response.json())
+        .then(data => {
+          toggleCamera();
+          console.log('Camera set successfully:', data);
+        })
+        .catch(error => {
+          console.error('Error setting camera:', error);
+          alert("Error: Camera not found, try a different camera.")
+        });
+    }
     
 
     async function toggleCamera() {
