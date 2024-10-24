@@ -785,7 +785,7 @@ function start_calibration_procedure() {
         progressDiv.className = 'calibration-progress';
         contentContainer.appendChild(progressDiv);
 
-        let image_count = 200;
+        let image_count = 100;
 
         const steps = [
             {
