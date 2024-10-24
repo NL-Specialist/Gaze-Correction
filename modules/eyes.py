@@ -106,7 +106,7 @@ class Eyes:
             # Determine gaze direction
             if classify_gaze:
                 self.gaze_direction = self.gaze_classifier.classify_gaze(frame, show_face_mesh, True)
-                self.should_correct_gaze =  True #self.gaze_direction == "Gaze Direction: Away"
+                self.should_correct_gaze = True #self.gaze_direction == "Gaze Direction: Away"
                 cv2.putText(frame, self.gaze_direction, (w // 2 - 100, h // 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             if draw_rectangles and self.left_eye_bbox and self.right_eye_bbox:
@@ -262,10 +262,15 @@ class Eyes:
                             cv2.circle(frame, (x, y), 1, (0, 255, 0), -1)  # Draw small circle at each landmark point for eyes
                             if show_text:
                                 cv2.putText(frame, str(idx), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0), 1)
-                        elif show_mouth and idx in [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13]:
-                            cv2.circle(frame, (x, y), 1, (0, 0, 255), -1)  # Draw small circle at each landmark point for mouth
+                        elif show_mouth and idx in [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 
+                                                    78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 
+                                                    308, 415, 310, 311, 312, 13, 82, 81, 42, 80, 
+                                                    191, 78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308]:
+                            # Draw small circle at each landmark point for the entire mouth
+                            cv2.circle(frame, (x, y), 1, (0, 0, 255), -1)
                             if show_text:
                                 cv2.putText(frame, str(idx), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
+
                         elif show_face_outline and idx in [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365]:
                             cv2.circle(frame, (x, y), 1, (255, 0, 0), -1)  # Draw small circle at each landmark point for face outline
                             if show_text:
@@ -285,14 +290,29 @@ class Eyes:
             corrected_right_eye_path = os.path.abspath('generated_images/right_eye.jpg')
 
             # Save the original frame for away gaze
-            dest_image_path = 'destination_image.jpg'
-            cv2.imwrite(dest_image_path, frame)
-            # dest_frame = frame
-            print(f"Saved frame to {dest_image_path}")
-            corrected_image = frame
+            dest_image_path = 'destination_image.png'  # Use .png to preserve alpha channel
+            dest_image = frame
+
+
+            if extract_eyes:
+                # Add a fully opaque alpha channel (255 for all pixels)
+                alpha_channel = np.ones((dest_image.shape[0], dest_image.shape[1]), dtype=dest_image.dtype) * 255
+                dest_image = np.dstack([dest_image, alpha_channel])
+
+                cv2.imwrite(dest_image_path, dest_image)
+                print(f"Saved frame to {dest_image_path}")
+
+                corrected_image = cv2.imread(dest_image_path, cv2.IMREAD_UNCHANGED)
+                print(f"Reading WITH alpha channel, corrected_image.shape: {corrected_image.shape}")
+            else:
+                cv2.imwrite(dest_image_path, dest_image)
+                print(f"Saved frame to {dest_image_path}")
+
+                corrected_image = cv2.imread(dest_image_path, cv2.IMREAD_COLOR)
+                print(f"Reading WITHOUT alpha channel, corrected_image.shape: {corrected_image.shape}")
+
             if self.should_correct_gaze:
                 print("Gaze correction is enabled")
-                # Convert frame to RGB for face mesh processing
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 print("Converted frame to RGB for face mesh processing")
 
@@ -302,62 +322,57 @@ class Eyes:
                 if results.multi_face_landmarks:
                     for face_landmarks in results.multi_face_landmarks:
                         print("Face landmarks detected, calculating eye boxes")
-                        self._calculate_eye_boxes(face_landmarks, frame)
-
-                        # Retry loading corrected images until they exist
+                        
                         max_retries = 50
                         retry_count = 0
                         while retry_count < max_retries:
                             if os.path.exists(corrected_left_eye_path) and os.path.getsize(corrected_left_eye_path) > 0:
-                                print(f"Loading corrected left eye from {corrected_left_eye_path}")
-                                self.left_eye_img = cv2.imread(corrected_left_eye_path)
+                                self.left_eye_img = cv2.imread(corrected_left_eye_path, cv2.IMREAD_UNCHANGED)
                                 if self.left_eye_img is not None:
                                     break
                             else:
-                                print(f"Waiting for corrected left eye image... Retry {retry_count + 1}/{max_retries}")
-                                time.sleep(1)  # Wait before retrying
+                                time.sleep(1)
                                 retry_count += 1
 
-                        # Similarly, retry for the right eye image
                         retry_count = 0
                         while retry_count < max_retries:
                             if os.path.exists(corrected_right_eye_path) and os.path.getsize(corrected_right_eye_path) > 0:
-                                print(f"Loading corrected right eye from {corrected_right_eye_path}")
-                                self.right_eye_img = cv2.imread(corrected_right_eye_path)
+                                self.right_eye_img = cv2.imread(corrected_right_eye_path, cv2.IMREAD_UNCHANGED)
                                 if self.right_eye_img is not None:
                                     break
                             else:
-                                print(f"Waiting for corrected right eye image... Retry {retry_count + 1}/{max_retries}")
-                                time.sleep(1)  # Wait before retrying
+                                time.sleep(1)
                                 retry_count += 1
 
                         if self.left_eye_img is not None and self.right_eye_img is not None:
-                            self.overlay_image(corrected_image, self.left_eye_bbox, self.left_eye_img)
-                            print("Left eye overlaid on the frame")
+                            left_eye_landmarks = [face_landmarks.landmark[i] for i in [33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144,]]
+                            right_eye_landmarks = [face_landmarks.landmark[i] for i in [362, 398, 384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374,]]
+                            self._calculate_eye_boxes(face_landmarks, frame)
+                            self.overlay_image(corrected_image, left_eye_landmarks, self.left_eye_img, extract_eyes, face_landmarks, self.left_eye_bbox)
+                            self.overlay_image(corrected_image, right_eye_landmarks, self.right_eye_img, extract_eyes, face_landmarks, self.right_eye_bbox)
 
-                            self.overlay_image(corrected_image, self.right_eye_bbox, self.right_eye_img)
-                            print("Right eye overlaid on the frame")
-
-                            # Save the corrected frame
-                            corrected_image_path = 'corrected_image.jpg'
+                            corrected_image_path = 'corrected_image.png'
                             cv2.imwrite(corrected_image_path, corrected_image)
                             print(f"Corrected frame saved to {corrected_image_path}")
 
-                            # Extract the final corrected image
-                            if extract_eyes: 
-                                corrected_image = extract(corrected_image_path=corrected_image_path, dest_image_path=dest_image_path)
-                            else: corrected_image = frame
-
-                            print("Final corrected image extracted")
+                            # To much processing, offloaded to GPU - IMPORTANT KEEP THIS COMMENTED
+                            # if extract_eyes:
+                            #     corrected_image = extract(corrected_image_path=corrected_image_path, dest_image_path=dest_image_path)
+                            # else:
+                            #     corrected_image = frame
                         else:
                             logging.error("Failed to load one or both corrected eye images.")
-                            raise FileNotFoundError("Corrected eye images were not available in time.")
+                            return frame
 
             return corrected_image
+
+        except cv2.error as e:
+            logging.error(f"OpenCV error in correct_gaze: {e}")
+            return frame  # Return original frame on OpenCV error
         except Exception as e:
             logging.error(f"Error in correct_gaze: {e}")
-            print(f"Error encountered: {e}")
-            raise
+            return frame  # Return original frame on any other error
+
 
 
 
@@ -397,70 +412,64 @@ class Eyes:
             logging.error(f"Error in _calculate_eye_boxes: {e}")
             raise
 
-    def overlay_boxes(self, frame, eye_bbox, eye_img):
+    def overlay_image(self, frame, eye_landmarks, eye_img, extract_eyes, face_landmarks, eye_bbox):
         try:
-            (x_min, y_min), (x_max, y_max) = eye_bbox
-            eye_region = frame[y_min:y_max, x_min:x_max]
-            eye_img_resized = cv2.resize(eye_img, (x_max - x_min, y_max - y_min))
+            
+            if extract_eyes:
+                (x_min, y_min), (x_max, y_max) = eye_bbox
+                eye_region = frame[y_min:y_max, x_min:x_max]
 
-            # Histogram matching to adjust contrast and color
-            eye_img_matched = match_histograms(eye_img_resized, eye_region)
+                # Resize the eye image while keeping its alpha channel
+                eye_img_resized = cv2.resize(eye_img, (x_max - x_min, y_max - y_min), interpolation=cv2.INTER_LINEAR)
 
-            # Ensure both images have the same data type (uint8)
-            if eye_img_matched.dtype != eye_region.dtype:
-                eye_img_matched = eye_img_matched.astype(eye_region.dtype)
+                # Perform histogram matching on RGB channels (skip alpha)
+                eye_img_rgb = eye_img_resized[:, :, :3]
+                eye_region_rgb = eye_region[:, :, :3]
+                eye_img_matched_rgb = match_histograms(eye_img_rgb, eye_region_rgb)
 
-            # Increase the weight of the eye image to make it more prominent
-            blended_eye = cv2.addWeighted(eye_region, 0.3, eye_img_matched, 0.7, 0)
+                # Ensure the matched image is the same type as the eye region
+                if eye_img_matched_rgb.dtype != eye_region_rgb.dtype:
+                    eye_img_matched_rgb = eye_img_matched_rgb.astype(eye_region_rgb.dtype)
 
-            # If the eye image has an alpha channel, blend only the RGB channels
-            if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel
-                eye_img_rgb = eye_img_resized[:, :, :3]  # Use only RGB channels
-                mask = eye_img_resized[:, :, 3]  # Alpha channel
-                mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR) / 255.0  # Normalize alpha mask
+                # Get the alpha channel from the resized eye image
+                alpha_channel = eye_img_resized[:, :, 3] / 255.0  # Normalize alpha to [0, 1] range
 
-                # Perform alpha blending based on the alpha channel
-                frame[y_min:y_max, x_min:x_max] = (1 - mask) * eye_region + mask * eye_img_rgb
-            else:
-                # No alpha channel, use the blended image
-                frame[y_min:y_max, x_min:x_max] = blended_eye
+                # Blend the matched eye image with the eye region using the alpha channel
+                for c in range(0, 3):  # Loop over the color channels (RGB)
+                    eye_region[:, :, c] = eye_img_matched_rgb[:, :, c] * alpha_channel + eye_region[:, :, c] * (1 - alpha_channel)
+
+                # Place the blended region back into the frame
+                frame[y_min:y_max, x_min:x_max] = eye_region
+            else:         
+                (x_min, y_min), (x_max, y_max) = eye_bbox
+                eye_region = frame[y_min:y_max, x_min:x_max]
+                eye_img_resized = cv2.resize(eye_img, (x_max - x_min, y_max - y_min))
+
+                # Histogram matching to adjust contrast and color
+                eye_img_matched = match_histograms(eye_img_resized, eye_region)
+
+                # Ensure both images have the same data type (uint8)
+                if eye_img_matched.dtype != eye_region.dtype:
+                    eye_img_matched = eye_img_matched.astype(eye_region.dtype)
+
+                # Increase the weight of the eye image to make it more prominent
+                blended_eye = cv2.addWeighted(eye_region, 0.3, eye_img_matched, 0.7, 0)
+
+                # If the eye image has an alpha channel, blend only the RGB channels
+                if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel
+                    eye_img_rgb = eye_img_resized[:, :, :3]  # Use only RGB channels
+                    mask = eye_img_resized[:, :, 3]  # Alpha channel
+                    mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR) / 255.0  # Normalize alpha mask
+
+                    # Perform alpha blending based on the alpha channel
+                    frame[y_min:y_max, x_min:x_max] = (1 - mask) * eye_region + mask * eye_img_rgb
+                else:
+                    # No alpha channel, use the blended image
+                    frame[y_min:y_max, x_min:x_max] = blended_eye
 
         except Exception as e:
             logging.error(f"Error in overlay_image: {e}")
             raise
-
-    def overlay_image(self, frame, eye_bbox, eye_img):
-        try:
-            (x_min, y_min), (x_max, y_max) = eye_bbox
-            eye_region = frame[y_min:y_max, x_min:x_max]
-            eye_img_resized = cv2.resize(eye_img, (x_max - x_min, y_max - y_min))
-
-            # Histogram matching to adjust contrast and color
-            eye_img_matched = match_histograms(eye_img_resized, eye_region)
-
-            # Ensure both images have the same data type (uint8)
-            if eye_img_matched.dtype != eye_region.dtype:
-                eye_img_matched = eye_img_matched.astype(eye_region.dtype)
-
-            # Increase the weight of the eye image to make it more prominent
-            blended_eye = cv2.addWeighted(eye_region, 0.3, eye_img_matched, 0.7, 0)
-
-            # If the eye image has an alpha channel, blend only the RGB channels
-            if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel
-                eye_img_rgb = eye_img_resized[:, :, :3]  # Use only RGB channels
-                mask = eye_img_resized[:, :, 3]  # Alpha channel
-                mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR) / 255.0  # Normalize alpha mask
-
-                # Perform alpha blending based on the alpha channel
-                frame[y_min:y_max, x_min:x_max] = (1 - mask) * eye_region + mask * eye_img_rgb
-            else:
-                # No alpha channel, use the blended image
-                frame[y_min:y_max, x_min:x_max] = blended_eye
-
-        except Exception as e:
-            logging.error(f"Error in overlay_image: {e}")
-            raise
-
 
 
             # Function to load an image from a file
@@ -685,7 +694,7 @@ def combine_images(frame, left_eye_region, right_eye_region, left_eye_contour, r
         # Perform perspective transform
         # Check if any regions are None before proceeding
         if left_eye_region is None or right_eye_region is None:
-            left_eye_region, right_eye_region, left_eye_contour, right_eye_contour, image = process_input_image(corrected_image_path)
+            left_eye_region, right_eye_region, left_eye_contour, right_eye_contour, image = process_input_image(frame)
         
         start_time = time.time()
         H_left, _ = cv2.findHomography(left_eye_points, dest_left_eye_points)

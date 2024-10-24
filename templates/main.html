@@ -57,6 +57,12 @@
                     </div>
                 
                     <div id="statusMessage">Status</div>
+                    <ul id="contextMenu" class="context-menu" style="display: none; position: absolute;">
+                      <li class="context-menu-item" data-index="0">Camera 0</li>
+                      <li class="context-menu-item" data-index="1">Camera 1</li>
+                      <li class="context-menu-item" data-index="2">Camera 2 (default)</li>
+                      <li class="context-menu-item" data-index="3">Camera 3</li>
+                    </ul>
                 
                     <div class="performance-button-group right">
                         <div class="button-wrapper">
@@ -121,7 +127,7 @@
                         <div class="training-parameter-block">
                             <h3>Training Parameters</h3>
                             <label for="training-tab-epochs">Epochs:</label>
-                            <input type="number" id="training-tab-epochs" value="10" placeholder="Enter Number of Epochs" min="1" max="1000" required>
+                            <input type="number" id="training-tab-epochs" value="15" placeholder="Enter Number of Epochs" min="10" max="40" required>
                             <label for="training-tab-learning-rate">Learning Rate:</label>
                             <input type="number" id="training-tab-learning-rate" value="0.0002" placeholder="Enter Learning Rate" step="0.0001" min="0.0001" max="1" required>
                         </div>
