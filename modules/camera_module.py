@@ -57,6 +57,7 @@ class CameraModule:
     def set_active_camera(self, camera_index):
         try:
             self.device_nr = camera_index
+            print(f"Setting camera index: {self.device_nr}")
             return True
         except Exception as e:
             print(f"Error in set active camera: {e}")
