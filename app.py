@@ -841,7 +841,7 @@ def start_calibration_training(folder_path):
             json={
                 'train_model_name': 'Auto', 
                 'dataset_path': folder_path, 
-                'epochs': 8, 
+                'epochs': 10, 
                 'learning_rate': 0.0002
             }
         )
