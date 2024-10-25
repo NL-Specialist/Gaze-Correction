@@ -275,6 +275,20 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
         left_eye_img = cv2.imread(output_left_filepath)
         right_eye_img = cv2.imread(output_right_filepath)
         
+        # left_eye_img_tensor = load_image_as_tensor(output_left_filepath)
+        # right_eye_img_tensor = load_image_as_tensor(output_right_filepath)
+        
+        # disc_output_left = eyes_gan_left.discriminator.discriminator([left_eye_img_tensor, left_img], training=True)
+        # disc_score_left = tf.reduce_mean(disc_output_left).numpy()
+
+        # if not np.isnan(disc_score_left):
+        #     print(f"Discriminator score: {disc_score_left}")
+
+        # if -10 <= disc_score_left <= 10:
+        #     print(f"PASSED! Classified score: {disc_score_left}")
+        # else: 
+        #     print(f"FAILED! Classified score: {disc_score_left}")
+        
         if extract_eyes:
             # Overlay new eyes onto frame
             eyes_processor.overlay_boxes(image, eyes_processor.left_eye_bbox, left_eye_img)
