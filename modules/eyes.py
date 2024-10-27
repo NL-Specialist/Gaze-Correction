@@ -38,7 +38,7 @@ class Eyes:
             self.offset_y = 20 # 18  For Laptop ---> Offset to move the bounding box up
 
             self.left_eye_offset_x = -5  # Offset to move the left eye bounding box left/right
-            self.left_eye_offset_y = 5  # Offset to move the left eye bounding box up/down
+            self.left_eye_offset_y = 0  # Offset to move the left eye bounding box up/down
 
             self.right_eye_offset_x = 10  # Offset to move the right eye bounding box left/right
             self.right_eye_offset_y = 5  # Offset to move the right eye bounding box up/down
