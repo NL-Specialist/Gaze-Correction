@@ -40,6 +40,7 @@ from concurrent.futures import ThreadPoolExecutor
 # Uvicorn for running FastAPI server
 import uvicorn
 
+import optuna
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
@@ -79,26 +80,83 @@ DATASETS_DIRECTORY = 'datasets'
 EYE_TYPE = 'both'  # or 'left' or 'right'
 EPOCHS = 1
 
-async def load_GAN(model_name, left_eye_device_type, right_eye_device_type):
+def objective(eye_type, trial, train_ds, test_ds, val_ds, debug=True):
+    if debug:
+        print("[DEBUG] Starting hyperparameter search with Optuna trial...")
+
+    # Define the search space for hyperparameters
+    gen_learning_rate = trial.suggest_loguniform('gen_learning_rate', 1e-5, 1e-3)
+    disc_learning_rate = trial.suggest_loguniform('disc_learning_rate', 1e-5, 1e-3)
+    beta_1 = trial.suggest_float('beta_1', 0.5, 0.9)
+    lambda_value = trial.suggest_int('lambda_value', 50, 200, step=50)
+
+    if debug:
+        print(f"[DEBUG] Suggested hyperparameters - Generator Learning Rate: {gen_learning_rate}, "
+              f"Discriminator Learning Rate: {disc_learning_rate}, Beta_1: {beta_1}, Lambda: {lambda_value}")
+
+    # Instantiate generator and discriminator with custom hyperparameters
+    generator = EYES_GAN_GENERATOR(input_shape=(24, 50, 3), output_channels=3)
+    discriminator = EYES_GAN_DISCRIMINATOR()
+    gan_model = EYES_GAN('opt_eyes_gan'+'_'+ eye_type, generator, discriminator)
+
+    if debug:
+        print("[DEBUG] GAN model instantiated with generator and discriminator.")
+
+    # Set the optimizers with trial hyperparameters
+    gan_model.generator_optimizer = tf.keras.optimizers.Adam(gen_learning_rate, beta_1=beta_1)
+    gan_model.discriminator_optimizer = tf.keras.optimizers.Adam(disc_learning_rate, beta_1=beta_1)
+    gan_model.generator.LAMBDA = lambda_value  # Update generator L1 weight
+
+    if debug:
+        print("[DEBUG] Optimizers configured for generator and discriminator with suggested hyperparameters.")
+
+    # Run training for a small number of epochs to evaluate performance
+    if debug:
+        print("[DEBUG] Starting GAN model training...")
+    gan_model.fit(model_name='opt_eyes_gan', train_ds=train_ds, test_ds=test_ds, epochs=3)
+    if debug:
+        print("[DEBUG] GAN model training complete.")
+
+    # Evaluate the model on validation set and return the loss for Optuna to minimize
+    save_dir = "validation_images"
+    validation_dataset_percentage = 100  # for example, validate on 10% of the dataset
+    if debug:
+        print("[DEBUG] Starting model evaluation on validation set...")
+    val_loss = gan_model.validate(val_dataset=val_ds, save_dir=save_dir, validation_dataset_percentage=validation_dataset_percentage)
+    if debug:
+        print(f"[DEBUG] Validation loss calculated: {val_loss}")
+
+    return val_loss  # Optuna aims to minimize this metric
+
+
+
+async def load_GAN(model_name, eye_type, device_type, train_ds=None, test_ds=None, val_ds=None):
     global eyes_gan_left, eyes_gan_right, generator_left, discriminator_left, generator_right, discriminator_right
     
     if model_name == 'disabled':
         # await offload_model()
         return {"status": "Model offloaded successfully.", "checkpoint_list":[]}
     
-    # Initialize the generator
-    generator_left = EYES_GAN_GENERATOR(input_shape=(24, 50, 3), gpu_index=left_eye_device_type)
-    generator_right = EYES_GAN_GENERATOR(input_shape=(24, 50, 3), gpu_index=right_eye_device_type)
+    # Run hyperparameter optimization only if datasets are provided
+    if train_ds is not None and test_ds is not None and val_ds is not None:
+        print("[INFO] Running Optuna hyperparameter optimization...")
+        study = optuna.create_study(direction='minimize')
+        study.optimize(lambda trial: objective(trial, train_ds, test_ds, val_ds), n_trials=5)  # Specify number of trials
+        
+        # Retrieve and print the best hyperparameters
+        best_params = study.best_params
+        print("Best hyperparameters:", best_params)
 
-    # Initialize the discriminator
-    discriminator_left = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3), gpu_index=left_eye_device_type)
-    discriminator_right = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3), gpu_index=right_eye_device_type)
+    # Initialize the generator and discriminator with optimized or default parameters
+    generator = EYES_GAN_GENERATOR(input_shape=(24, 50, 3), gpu_index=device_type)
+    discriminator = EYES_GAN_DISCRIMINATOR(input_shape=(24, 50, 3), gpu_index=device_type)
 
-    # Initialize EYES_GAN
-    eyes_gan_left = EYES_GAN(model_name + '_left', generator_left, discriminator_left, left_eye_device_type)
-    eyes_gan_right = EYES_GAN(model_name +'_right', generator_right, discriminator_right, right_eye_device_type)
+    # Initialize EYES_GAN with the best parameters
+    eye_gan = EYES_GAN(model_name + '_' + eye_type, generator, discriminator, device_type)
     
-    return True
+    return eye_gan
+
+
 
 
 class LoadModelRequest(BaseModel):
@@ -116,7 +174,7 @@ async def load_model(request: LoadModelRequest):
         A JSON response indicating the success of the model loading operation.
         A List of checkpoints corresponding to the loaded model
     """
-    global model_name
+    global model_name, eyes_gan_left, eyes_gan_right
     
     model_name = request.load_model_name
     
@@ -124,8 +182,9 @@ async def load_model(request: LoadModelRequest):
         # await offload_model()
         return {"status": "Model disabled.", "checkpoint_list":[]}
     
-    await load_GAN(model_name, "0", "0")
-    
+    eyes_gan_left = await load_GAN(model_name, 'left', "0")
+    eyes_gan_right = await load_GAN(model_name, 'right', "1")
+
     # Get list of trained checkpoints
     checkpoint_list_left = await get_model_checkpoints(model_name=model_name+'_left')
     checkpoint_list_right = await get_model_checkpoints(model_name=model_name+'_right')
@@ -335,7 +394,7 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
         return {"error": str(e)}
 
 
-def apply_custom_opacity(mask, eye_region_opacity=180, border_width=2, start_opacity=120, decrement=20):
+def apply_custom_opacity(mask, eye_region_opacity=255, border_width=2, start_opacity=255, decrement=0):
     """
     Apply a custom gradient of transparency around the eye region.
     Opacity decreases by `decrement` starting from `start_opacity` after `border_width` pixels from the eye region.
@@ -486,7 +545,6 @@ async def train(request: TrainRequest):
             train_dataset_left,
             test_dataset_left,
             EPOCHS,
-            request.learning_rate
         )
 
     async def train_model_right():
@@ -496,10 +554,10 @@ async def train(request: TrainRequest):
             train_dataset_right,
             test_dataset_right,
             EPOCHS,
-            request.learning_rate
         )
 
-    await load_GAN(model_name, "0", "1")
+    eyes_gan_left = await load_GAN(model_name, 'left', "0", train_dataset_left, test_dataset_left, val_dataset_left)
+    eyes_gan_right = await load_GAN(model_name, 'right', "1", train_dataset_right, test_dataset_right, val_dataset_right)
 
     if eyes_gan_left is None or eyes_gan_right is None:
         raise HTTPException(status_code=400, detail="Model not loaded. Call /load_model/ first.")

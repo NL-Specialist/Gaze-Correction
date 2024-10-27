@@ -257,7 +257,7 @@ class EYES_GAN:
                     imageio.imwrite(save_path, img)
                     print(f"Image saved to {save_path}")
 
-    def fit(self, model_name, train_ds, test_ds, epochs, learning_rate, checkpoint_interval=1000):
+    def fit(self, model_name, train_ds, test_ds, epochs, checkpoint_interval=1000):
         with tf.device(self.device):
             self.model_name = model_name
             self.model_save_dir = os.path.join('models', self.model_name)
@@ -352,10 +352,11 @@ class EYES_GAN:
             else:
                 print(f"No checkpoint found in: {checkpoint_path}")
 
-    async def validate(self, val_dataset, save_dir='validated_images', validation_dataset_percentage=10):
-        await asyncio.to_thread(self._run_validate, val_dataset, save_dir, validation_dataset_percentage)
 
-    def _run_validate(self, val_dataset, save_dir, validation_dataset_percentage):
+    def validate(self, val_dataset, save_dir, validation_dataset_percentage):
+        total_loss = 0.0
+        num_samples = 0
+
         with tf.device(self.device):
             print("Running validation...")
             if not os.path.exists(save_dir):
@@ -365,20 +366,38 @@ class EYES_GAN:
             try:
                 total_samples = sum(1 for _ in val_dataset)
                 num_samples_to_validate = max(1, total_samples * validation_dataset_percentage // 100)
+                
+                # Check if there are samples to validate
+                if num_samples_to_validate == 0:
+                    print("No samples available for validation.")
+                    return float('inf')  # Return a high loss for Optuna to mark the trial as failed
 
                 val_dataset = val_dataset.take(num_samples_to_validate)
 
                 for i, (inp, tar) in enumerate(val_dataset):
-                    inp = inp[0]
-                    tar = tar[0]
+                    # Add batch dimension
+                    inp = tf.expand_dims(inp[0], axis=0)
+                    tar = tf.expand_dims(tar[0], axis=0)
+                    
                     print(f"Processing data {i}")
                     print(f"Input tensor structure: {type(inp)}, shape: {inp.shape}")
                     print(f"Target tensor structure: {type(tar)}, shape: {tar.shape}")
 
+                    # Generate the output image
+                    generated_image = self.generator.generator(inp, training=True)  
+
+                    # Calculate L1 loss between generated and target images
+                    l1_loss = tf.reduce_mean(tf.abs(generated_image - tar))
+                    total_loss += l1_loss.numpy()
+                    num_samples += 1
+
+                    # Optionally, save images for inspection
                     self._run_generate_images(inp, tar, save_dir=save_dir, epoch=0, step=i)
 
-                print(f"Validation complete. Images saved to {save_dir}.")
+                # Compute the average loss
+                average_loss = total_loss / num_samples if num_samples > 0 else float('inf')
+                print(f"Validation complete. Images saved to {save_dir}. Average Loss: {average_loss}")
+                return average_loss
             except Exception as e:
                 print(f"An unexpected error occurred: {e}")
-            finally:
-                self.summary_writer.close()
+                return float('inf')  # Return a high loss if an error occurs
