@@ -22,7 +22,7 @@ class EYES_GAN_GENERATOR:
     def __init__(self, input_shape=(24, 50, 3), output_channels=3, gpu_index="0"):        
         # Set the device context to the specified GPU
         self.device = f'GPU:{gpu_index}'
-        print(f"[INFO] Using device: {self.device}")
+        # print(f"[INFO] Using device: {self.device}")
 
         self.input_shape = input_shape
         self.OUTPUT_CHANNELS = output_channels

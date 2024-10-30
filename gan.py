@@ -193,7 +193,7 @@ async def load_model(request: LoadModelRequest):
         return {"status": "Model disabled.", "checkpoint_list":[]}
     
     eyes_gan_left = await load_GAN(model_name, 'left', "0")
-    eyes_gan_right = await load_GAN(model_name, 'right', "1")
+    eyes_gan_right = await load_GAN(model_name, 'right', "0")
 
     # Get list of trained checkpoints
     checkpoint_list_left = await get_model_checkpoints(model_name=model_name+'_left')
@@ -316,32 +316,35 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
         
         # Process left and right eyes
         eyes_processor = Eyes()
+        
+        #### LEFT EYE ####
         left_img = eyes_processor.get_left_eye_region(image, False)
-        right_img = eyes_processor.get_right_eye_region(image, False)
-        
         input_left_eye_path = os.path.join("INPUT_EYES", "left_eye.png")
-        input_right_eye_path = os.path.join("INPUT_EYES", "right_eye.png")
-        
-        print(f"[INFO] Saving left eye to {input_left_eye_path} and right eye to {input_right_eye_path}...")
         cv2.imwrite(input_left_eye_path, left_img)
-        cv2.imwrite(input_right_eye_path, right_img)
+        print(f"[INFO] Saved LEFT input eye to {input_left_eye_path}")
         
         left_img = load_image_as_tensor(input_left_eye_path)
-        right_img = load_image_as_tensor(input_right_eye_path)
-        
-        # GAN model prediction and returning corrected images (remains the same)
         output_left_filepath = os.path.join("generated_images", "left_eye.png")
-        output_right_filepath = os.path.join("generated_images", "right_eye.png")
-
         await eyes_gan_left.predict(left_img, save_path=output_left_filepath)
-        await eyes_gan_right.predict(right_img, save_path=output_right_filepath)   
+        print(f"[INFO] Predicted LEFT generated eye to {output_left_filepath}")
         
+        #### RIGHT EYE ####
+        right_img = eyes_processor.get_right_eye_region(image, False)
+        input_right_eye_path = os.path.join("INPUT_EYES", "right_eye.png")
+        cv2.imwrite(input_right_eye_path, right_img)
+        print(f"[INFO] Saved right input eye to {input_right_eye_path}")
         
-        left_eye_img = cv2.imread(output_left_filepath)
-        right_eye_img = cv2.imread(output_right_filepath)
+        right_img = load_image_as_tensor(input_right_eye_path)
+        output_right_filepath = os.path.join("generated_images", "right_eye.png")
+        await eyes_gan_right.predict(right_img, save_path=output_right_filepath) 
+        print(f"[INFO] Predicted RIGHT generated eye to {output_right_filepath}")
         
         
         if extract_eyes:
+            # Load eyes
+            left_eye_img = cv2.imread(output_left_filepath)
+            right_eye_img = cv2.imread(output_right_filepath)
+        
             # Overlay new eyes onto frame
             eyes_processor.overlay_boxes(image, eyes_processor.left_eye_bbox, left_eye_img)
             eyes_processor.overlay_boxes(image, eyes_processor.right_eye_bbox, right_eye_img)

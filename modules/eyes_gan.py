@@ -49,68 +49,41 @@ class EYES_GAN:
             self.disc_loss = []
             self.progress = []
             self.step = 0
-            self.best_target_tensor = None
             
-            self.max_retries = 10
-            self.upper_threshold = 4  # Define a threshold for quality checking
-            self.lower_threshold = -4
-            self.best_score = float('-inf')
-            self.best_prediction = None
 
-    async def predict(self, input_image, save_path='generated_image.png'):
+    async def predict(self, input_image, save_path):
         # Use asyncio.to_thread() to run the prediction in a non-blocking way
         return await asyncio.to_thread(self._run_prediction, input_image, save_path)
 
     def _run_prediction(self, input_image, save_path):
-        if isinstance(input_image, np.ndarray):
-            input_image = tf.convert_to_tensor(input_image, dtype=tf.float32)
-
         try:
-            for attempt in range(self.max_retries):
-                print(f"Attempt {attempt + 1} to generate an image.")
-
-                with tf.device(self.device):
-                    prediction = self.generator.generator(input_image, training=True)
-                    self._save_image(prediction, save_path)
-
-                    disc_output = self.discriminator.discriminator([prediction, self.best_target_tensor], training=True)
-                    disc_score = tf.reduce_mean(disc_output).numpy()
-
-                    if not np.isnan(disc_score):
-                        print(f"Discriminator score: {disc_score}")
-                        print(f"self.best_score: {self.best_score}")
-
-                        # if self.lower_threshold <= disc_score <= self.upper_threshold:
-                        #     print(f"Image passed the quality check with score {disc_score}. Saving and returning.")
-                        #     self._save_image(prediction, save_path)
-                        #     return prediction
-
-                        if disc_score > self.best_score:
-                            self.best_score = disc_score
-                            self.best_prediction = prediction
-                            print("NOTE! Best prediction being replaced by score: ", self.best_score)
-                    else:
-                        print("[WARNING] Discriminator returned NaN score. Skipping this attempt.")
-
-            if self.best_prediction is None:
-                print("[ERROR] No valid image could be generated. Returning None.")
-                return None
-
-            print(f"No image met the quality threshold after {self.max_retries} attempts. Saving the best one with score {self.best_score}.")
-            self._save_image(self.best_prediction, save_path)
-            return self.best_prediction
-
+            prediction = self.generator.generator(input_image, training=True)
+            self._save_image(prediction, save_path)
+        except tf.errors.InvalidArgumentError as e:
+            print(f"[ERROR] Invalid input for GAN prediction: {str(e)}")
+        except FileNotFoundError as e:
+            print(f"[ERROR] Save path not found: {str(e)}")
         except Exception as e:
-            print(f"[ERROR] Error during GAN prediction: {str(e)}")
-            raise e  # Re-raise to allow further handling outside if needed
+            print(f"[ERROR] Unexpected error during GAN prediction: {str(e)}")
+            raise e  # Re-raise for further handling if necessary
 
     def _save_image(self, image, save_path):
-        if len(image.shape) == 4:
-            image = tf.squeeze(image, axis=0)
-        image = (image + 1.0) * 127.5
-        image = tf.cast(image, tf.uint8)
-        encoded_image = tf.image.encode_jpeg(image)
-        tf.io.write_file(save_path, encoded_image)
+        try:
+            if len(image.shape) == 4:
+                image = tf.squeeze(image, axis=0)
+            image = (image + 1.0) * 127.5
+            image = tf.cast(image, tf.uint8)
+            encoded_image = tf.image.encode_jpeg(image)
+            tf.io.write_file(save_path, encoded_image)
+        except tf.errors.InvalidArgumentError as e:
+            print(f"[ERROR] Error encoding image: {str(e)}")
+        except tf.errors.OpError as e:
+            print(f"[ERROR] TensorFlow operation error: {str(e)}")
+        except PermissionError as e:
+            print(f"[ERROR] Permission denied for save path: {str(e)}")
+        except Exception as e:
+            print(f"[ERROR] Unexpected error during image saving: {str(e)}")
+            raise e  # Re-raise for higher-level handling if needed
 
     async def train_step(self, input_image, target, step):
         return await asyncio.to_thread(self._run_train_step, input_image, target, step)
@@ -340,26 +313,6 @@ class EYES_GAN:
                 checkpoint_path = tf.train.latest_checkpoint(self.checkpoint_dir)
                 if checkpoint_path:
                     checkpoint_path = re.sub(r'ckpt-\d+', f'ckpt-{checkpoint_nr}', checkpoint_path)
-            
-            # Load the saved best image as a tensor
-            best_image_path = os.path.join(self.model_save_dir, 'best_image_data', 'best_target.png')
-            best_image_data = tf.io.read_file(best_image_path)
-            best_image_tensor = tf.image.decode_image(best_image_data, channels=3)
-            best_image_tensor = tf.image.convert_image_dtype(best_image_tensor, tf.float32)
-
-            # Add a batch dimension to match the expected shape
-            best_image_tensor = tf.expand_dims(best_image_tensor, axis=0)
-
-            print("Best image tensor shape:", best_image_tensor.shape)
-
-
-            self.best_target_tensor = best_image_tensor
-            
-            best_image_loss_path = os.path.join(self.model_save_dir, 'best_image_data', 'best_loss.json')
-            # Read the JSON file and get the `disc_total_loss` value
-            with open(best_image_loss_path, 'r') as json_file:
-                loss_data = json.load(json_file)
-                self.best_score = loss_data.get("disc_total_loss")
             
             if checkpoint_path:
                 self.checkpoint.restore(checkpoint_path)

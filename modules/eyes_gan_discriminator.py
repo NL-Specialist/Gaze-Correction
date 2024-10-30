@@ -6,7 +6,7 @@ class EYES_GAN_DISCRIMINATOR:
         self.input_shape = input_shape
         
         self.device = f'GPU:{gpu_index}'  # This will always refer to the first visible GPU after setting CUDA_VISIBLE_DEVICES
-        print(f"[INFO] Using device: {self.device}")
+        # print(f"[INFO] Using device: {self.device}")
         
         with tf.device(self.device):  # Set the device context
             self.discriminator = self.build_discriminator()
