@@ -12,20 +12,32 @@ right_eye_landmarks = [384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374, 38
 
 def _extract_eye_region_with_alpha(frame, eye_points):
     height, width = frame.shape[:2]
+    
+    # Create mask for the eye region
     mask = np.zeros((height, width), dtype=np.uint8)
     cv2.fillPoly(mask, [np.array(eye_points)], 255)
-
-    # Extract eye region with mask
-    eye_region = cv2.bitwise_and(frame, frame, mask=mask)
     
-    # Crop the eye region based on mask
+    # Crop the eye region based on bounding box around eye points
     x, y, w, h = cv2.boundingRect(np.array(eye_points))
-    eye_crop = eye_region[y:y+h, x:x+w]
     mask_crop = mask[y:y+h, x:x+w]
+    eye_crop = frame[y:y+h, x:x+w]
 
-    # Add an alpha channel
+    # Create distance transform to calculate distances from edge inward
+    gradient_mask = cv2.distanceTransform(255 - mask_crop, cv2.DIST_L2, 5)
+    gradient_mask = cv2.normalize(gradient_mask, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+    # Stronger fade scaling to enhance the inward fade effect
+    fade_mask = cv2.subtract(255, gradient_mask)
+    fade_mask = np.clip(fade_mask * 2, 0, 255).astype(np.uint8)  # Further increase fade intensity
+
+    # Apply an even larger Gaussian blur for a softer, more extended fade
+    fade_mask = cv2.GaussianBlur(fade_mask, (31, 31), 0)
+    fade_mask = np.where(mask_crop == 255, fade_mask, 0)  # Ensure fade stays within the eye contour
+
+    # Apply the fade mask as the alpha channel
     eye_with_alpha = cv2.cvtColor(eye_crop, cv2.COLOR_BGR2BGRA)
-    eye_with_alpha[:, :, 3] = mask_crop  # Set alpha channel based on mask
+    eye_with_alpha[:, :, 3] = fade_mask  # Set the alpha with extended fade
+
     
     return eye_with_alpha, (x, y, w, h)
 
