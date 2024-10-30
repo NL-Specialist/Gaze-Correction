@@ -6,6 +6,7 @@ import shutil
 import re
 import asyncio
 import threading
+import json
 
 # TensorFlow and Keras for deep learning
 import tensorflow as tf
@@ -35,6 +36,7 @@ class EYES_GAN:
             self.discriminator_optimizer = tf.keras.optimizers.Adam(2e-5, beta_1=0.5)
             self.model_save_dir = os.path.join('models', model_name)
             self.checkpoint_dir = os.path.join(self.model_save_dir, 'training_checkpoints')
+            self.image_checkpoint_dir = os.path.join(self.model_save_dir, 'image_checkpoints')
             self.checkpoint_prefix = os.path.join(self.checkpoint_dir, "ckpt")
             self.checkpoint = tf.train.Checkpoint(generator_optimizer=self.generator_optimizer,
                                                   discriminator_optimizer=self.discriminator_optimizer,
@@ -47,57 +49,13 @@ class EYES_GAN:
             self.disc_loss = []
             self.progress = []
             self.step = 0
+            self.best_target_tensor = None
             
             self.max_retries = 10
             self.upper_threshold = 4  # Define a threshold for quality checking
             self.lower_threshold = -4
             self.best_score = float('-inf')
             self.best_prediction = None
-
-    # def predict(self, input_image, save_path):
-    #     # Use threading to run the prediction in a non-blocking way
-    #     threading.Thread(target=self._run_prediction, args=(input_image, save_path), daemon=True).start()
-
-    # def _run_prediction(self, input_image, save_path):
-    #     if isinstance(input_image, np.ndarray):
-    #         input_image = tf.convert_to_tensor(input_image, dtype=tf.float32)
-
-    #     try:
-    #         for attempt in range(self.max_retries):
-    #             print(f"Attempt {attempt + 1} to generate an image.")
-
-    #             with tf.device(self.device):
-    #                 prediction = self.generator.generator(input_image, training=True)
-    #                 self._save_image(prediction, save_path)
-
-    #                 disc_output = self.discriminator.discriminator([input_image, prediction], training=True)
-    #                 disc_score = tf.reduce_mean(disc_output).numpy()
-
-    #                 if not np.isnan(disc_score):
-    #                     print(f"Discriminator score: {disc_score}")
-
-    #                     if self.lower_threshold <= disc_score <= self.upper_threshold:
-    #                         print(f"Image passed the quality check with score {disc_score}. Saving and returning.")
-    #                         self._save_image(prediction, save_path)
-    #                         return prediction
-
-    #                     if disc_score > self.best_score:
-    #                         self.best_score = disc_score
-    #                         self.best_prediction = prediction
-    #                 else:
-    #                     print("[WARNING] Discriminator returned NaN score. Skipping this attempt.")
-
-    #         if self.best_prediction is None:
-    #             print("[ERROR] No valid image could be generated. Returning None.")
-    #             return None
-
-    #         print(f"No image met the quality threshold after {self.max_retries} attempts. Saving the best one with score {self.best_score}.")
-    #         self._save_image(self.best_prediction, save_path)
-    #         return self.best_prediction
-
-    #     except Exception as e:
-    #         print(f"[ERROR] Error during GAN prediction: {str(e)}")
-    #         raise e  # Re-raise to allow further handling outside if needed
 
     async def predict(self, input_image, save_path='generated_image.png'):
         # Use asyncio.to_thread() to run the prediction in a non-blocking way
@@ -115,20 +73,22 @@ class EYES_GAN:
                     prediction = self.generator.generator(input_image, training=True)
                     self._save_image(prediction, save_path)
 
-                    disc_output = self.discriminator.discriminator([input_image, prediction], training=True)
+                    disc_output = self.discriminator.discriminator([prediction, self.best_target_tensor], training=True)
                     disc_score = tf.reduce_mean(disc_output).numpy()
 
                     if not np.isnan(disc_score):
                         print(f"Discriminator score: {disc_score}")
+                        print(f"self.best_score: {self.best_score}")
 
-                        if self.lower_threshold <= disc_score <= self.upper_threshold:
-                            print(f"Image passed the quality check with score {disc_score}. Saving and returning.")
-                            self._save_image(prediction, save_path)
-                            return prediction
+                        # if self.lower_threshold <= disc_score <= self.upper_threshold:
+                        #     print(f"Image passed the quality check with score {disc_score}. Saving and returning.")
+                        #     self._save_image(prediction, save_path)
+                        #     return prediction
 
                         if disc_score > self.best_score:
                             self.best_score = disc_score
                             self.best_prediction = prediction
+                            print("NOTE! Best prediction being replaced by score: ", self.best_score)
                     else:
                         print("[WARNING] Discriminator returned NaN score. Skipping this attempt.")
 
@@ -192,7 +152,7 @@ class EYES_GAN:
                     tf.summary.scalar('gen_l1_loss', gen_l1_loss, step=step // 1000)
                     tf.summary.scalar('disc_loss', disc_loss, step=step // 1000)
 
-                return gen_total_loss, gen_gan_loss, gen_l1_loss, disc_loss
+                return gen_total_loss, gen_gan_loss, gen_l1_loss, disc_loss, gen_output
 
             except tf.errors.OutOfRangeError as e:
                 print(f"OutOfRangeError occurred at step {step}, retrying... (Attempt {retry_count+1}/{retry_limit})")
@@ -294,6 +254,9 @@ class EYES_GAN:
             if not os.path.exists(self.checkpoint_dir):
                 os.makedirs(self.checkpoint_dir)
 
+            # Variable to track the best generator loss
+            best_gen_loss = float('inf')
+
             for epoch in range(epochs):
                 print(f"Epoch {epoch}/{epochs}")
                 start = time.time()
@@ -302,7 +265,7 @@ class EYES_GAN:
 
                 for step, (input_image, target) in progress_bar:
                     global_step = epoch * steps_per_epoch + step
-                    gen_total_loss, gen_gan_loss, gen_l1_loss, disc_total_loss = self._run_train_step(input_image, target, global_step)
+                    gen_total_loss, gen_gan_loss, gen_l1_loss, disc_total_loss, gen_output = self._run_train_step(input_image, target, global_step)
 
                     if (step) % 100 == 0:
                         progress_bar.set_postfix({
@@ -312,10 +275,12 @@ class EYES_GAN:
                             'disc_loss': f'{disc_total_loss.numpy():.4f}'
                         })
 
-                    # if (step) % checkpoint_interval == 0:
-                    #     self._run_generate_images(test_input=input_image, tar=target, epoch=epoch, step=step)
-                    #     self.checkpoint.save(file_prefix=self.checkpoint_prefix)
-                    #     print(f"Checkpoint saved at step {step} of epoch {epoch}")
+                    # Check if the current generator loss is the best
+                    if gen_total_loss < best_gen_loss:
+                        best_gen_loss = gen_total_loss
+                        # Save the best generated image
+                        if not 'opt_eyes_gan' in model_name:
+                            self._save_best_image(gen_output, gen_total_loss, gen_gan_loss, gen_l1_loss, disc_total_loss)
 
                 self.gen_loss.append(gen_total_loss)
                 self.disc_loss.append(disc_total_loss)
@@ -329,10 +294,40 @@ class EYES_GAN:
                 self.checkpoint.save(file_prefix=self.checkpoint_prefix)
                 print(f"Checkpoint saved at step {step} of epoch {epoch}")
 
-
                 print(f'Time taken for epoch {epoch} is {time.time() - start:.2f} sec\n')
 
             self.summary_writer.close()
+
+    # Define a helper function to save the best generated image
+    def _save_best_image(self, gen_output, gen_total_loss, gen_gan_loss, gen_l1_loss, disc_total_loss):        
+        if not os.path.exists(self.model_save_dir):
+            os.makedirs(self.model_save_dir, exist_ok=True)
+        
+        # Define the paths to save the best image and the best loss JSON file
+        best_image_data_path = os.path.join(self.model_save_dir, 'best_image_data')
+        best_image_path = os.path.join(self.model_save_dir, 'best_image_data', 'best_target.png')
+        best_image_loss_path = os.path.join(self.model_save_dir, 'best_image_data', 'best_loss.json')
+        
+        # Ensure the image_checkpoint_dir exists
+        if not os.path.exists(best_image_data_path):
+            os.makedirs(best_image_data_path, exist_ok=True)
+            
+        # Save the generated image
+        self._save_image(gen_output, best_image_path)
+        
+        # Save all loss values in JSON format
+        loss_data = {
+            "gen_total_loss": float(gen_total_loss),
+            "gen_gan_loss": float(gen_gan_loss),
+            "gen_l1_loss": float(gen_l1_loss),
+            "disc_total_loss": float(disc_total_loss)
+        }
+        os.makedirs(os.path.dirname(best_image_loss_path), exist_ok=True)  # Ensure directory exists
+
+        with open(best_image_loss_path, 'w') as json_file:
+            json.dump(loss_data, json_file)
+        print(f"[INFO] Best generator losses saved in JSON at {best_image_loss_path}")
+        
 
     async def restore(self, checkpoint_nr=-1):
         return await asyncio.to_thread(self._run_restore, checkpoint_nr)
@@ -345,7 +340,27 @@ class EYES_GAN:
                 checkpoint_path = tf.train.latest_checkpoint(self.checkpoint_dir)
                 if checkpoint_path:
                     checkpoint_path = re.sub(r'ckpt-\d+', f'ckpt-{checkpoint_nr}', checkpoint_path)
+            
+            # Load the saved best image as a tensor
+            best_image_path = os.path.join(self.model_save_dir, 'best_image_data', 'best_target.png')
+            best_image_data = tf.io.read_file(best_image_path)
+            best_image_tensor = tf.image.decode_image(best_image_data, channels=3)
+            best_image_tensor = tf.image.convert_image_dtype(best_image_tensor, tf.float32)
 
+            # Add a batch dimension to match the expected shape
+            best_image_tensor = tf.expand_dims(best_image_tensor, axis=0)
+
+            print("Best image tensor shape:", best_image_tensor.shape)
+
+
+            self.best_target_tensor = best_image_tensor
+            
+            best_image_loss_path = os.path.join(self.model_save_dir, 'best_image_data', 'best_loss.json')
+            # Read the JSON file and get the `disc_total_loss` value
+            with open(best_image_loss_path, 'r') as json_file:
+                loss_data = json.load(json_file)
+                self.best_score = loss_data.get("disc_total_loss")
+            
             if checkpoint_path:
                 self.checkpoint.restore(checkpoint_path)
                 print(f"Restored from {checkpoint_path}")

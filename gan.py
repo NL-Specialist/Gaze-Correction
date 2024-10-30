@@ -113,7 +113,7 @@ def objective(eye_type, trial, train_ds, test_ds, val_ds, debug=True):
     # Run training for a small number of epochs to evaluate performance
     if debug:
         print("[DEBUG] Starting GAN model training...")
-    gan_model.fit(model_name='opt_eyes_gan', train_ds=train_ds, test_ds=test_ds, epochs=3)
+    gan_model.fit(model_name='opt_eyes_gan'+'_'+ eye_type, train_ds=train_ds, test_ds=test_ds, epochs=1)
     if debug:
         print("[DEBUG] GAN model training complete.")
 
@@ -141,11 +141,21 @@ async def load_GAN(model_name, eye_type, device_type, train_ds=None, test_ds=Non
     if train_ds is not None and test_ds is not None and val_ds is not None:
         print("[INFO] Running Optuna hyperparameter optimization...")
         study = optuna.create_study(direction='minimize')
-        study.optimize(lambda trial: objective(trial, train_ds, test_ds, val_ds), n_trials=5)  # Specify number of trials
+        study.optimize(lambda trial: objective(eye_type, trial, train_ds, test_ds, val_ds), n_trials=1)  # Specify number of trials
+    
         
         # Retrieve and print the best hyperparameters
         best_params = study.best_params
         print("Best hyperparameters:", best_params)
+        # Define the path for the text file where best_params will be saved
+        best_params_path = f'best_hyperparameters_{eye_type}.txt'
+
+        # Write best_params to the file
+        with open(best_params_path, 'w') as file:
+            file.write(f"Best hyperparameters: {best_params}")
+
+        print(f"[INFO] Best hyperparameters saved to {best_params_path}")
+
 
     # Initialize the generator and discriminator with optimized or default parameters
     generator = EYES_GAN_GENERATOR(input_shape=(24, 50, 3), gpu_index=device_type)
@@ -281,7 +291,7 @@ def load_image_as_tensor(image_path):
 async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = Form(True)):
     global eyes_gan_left, eyes_gan_right
 
-    if eyes_gan_left is None :  # or eyes_gan_right is None
+    if eyes_gan_left is None or eyes_gan_right is None:
         logging.error("Model not loaded. Call /load_model/ first.")
         return {"error": "Model not loaded. Call /load_model/ first."}
 
@@ -309,8 +319,8 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
         left_img = eyes_processor.get_left_eye_region(image, False)
         right_img = eyes_processor.get_right_eye_region(image, False)
         
-        input_left_eye_path = os.path.join("INPUT_EYES", "left_eye.jpg")
-        input_right_eye_path = os.path.join("INPUT_EYES", "right_eye.jpg")
+        input_left_eye_path = os.path.join("INPUT_EYES", "left_eye.png")
+        input_right_eye_path = os.path.join("INPUT_EYES", "right_eye.png")
         
         print(f"[INFO] Saving left eye to {input_left_eye_path} and right eye to {input_right_eye_path}...")
         cv2.imwrite(input_left_eye_path, left_img)
@@ -319,13 +329,9 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
         left_img = load_image_as_tensor(input_left_eye_path)
         right_img = load_image_as_tensor(input_right_eye_path)
         
-        # Expand dims before passing to GAN model (to match expected input shape)
-        # left_img = np.expand_dims(left_img, axis=0)  # Shape becomes (1, 24, 50, 3)
-        # right_img = np.expand_dims(right_img, axis=0)  # Shape becomes (1, 24, 50, 3)
-
         # GAN model prediction and returning corrected images (remains the same)
-        output_left_filepath = os.path.join("generated_images", "left_eye.jpg")
-        output_right_filepath = os.path.join("generated_images", "right_eye.jpg")
+        output_left_filepath = os.path.join("generated_images", "left_eye.png")
+        output_right_filepath = os.path.join("generated_images", "right_eye.png")
 
         await eyes_gan_left.predict(left_img, save_path=output_left_filepath)
         await eyes_gan_right.predict(right_img, save_path=output_right_filepath)   
@@ -334,19 +340,6 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
         left_eye_img = cv2.imread(output_left_filepath)
         right_eye_img = cv2.imread(output_right_filepath)
         
-        # left_eye_img_tensor = load_image_as_tensor(output_left_filepath)
-        # right_eye_img_tensor = load_image_as_tensor(output_right_filepath)
-        
-        # disc_output_left = eyes_gan_left.discriminator.discriminator([left_eye_img_tensor, left_img], training=True)
-        # disc_score_left = tf.reduce_mean(disc_output_left).numpy()
-
-        # if not np.isnan(disc_score_left):
-        #     print(f"Discriminator score: {disc_score_left}")
-
-        # if -10 <= disc_score_left <= 10:
-        #     print(f"PASSED! Classified score: {disc_score_left}")
-        # else: 
-        #     print(f"FAILED! Classified score: {disc_score_left}")
         
         if extract_eyes:
             # Overlay new eyes onto frame
@@ -355,24 +348,16 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
 
             # Process the image and find face meshes
             results = face_mesh.process(image)
-
-            if results.multi_face_landmarks:
-                for face_landmarks in results.multi_face_landmarks:
-                    # Extract landmarks for left and right eyes in correct order
-                    left_eye_landmarks = [face_landmarks.landmark[i] for i in [33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144,]]
-                    right_eye_landmarks = [face_landmarks.landmark[i] for i in [362, 398, 384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374,]]
             
-                    # Extract and save the left eye region with No Background
-                    left_eye_image = extract_eye_region_with_gradient(image, left_eye_landmarks, eyes_processor.left_eye_bbox)
-                    output_left_no_background_filepath = os.path.join("OUTPUT_EYES", "left_eye_transparent.png")
-                    cv2.imwrite(output_left_no_background_filepath, left_eye_image)
-                    print(f"[SUCCESS] Saved corrected left eye with transparent background to: {output_left_no_background_filepath}")
+            left_eye1, right_eye1, left_bbox1, right_bbox1 = extract_eye_region(image, results)
 
-                    # Extract and save the right eye region with No Background
-                    right_eye_image = extract_eye_region_with_gradient(image, right_eye_landmarks, eyes_processor.right_eye_bbox)
-                    output_right_no_background_filepath = os.path.join("OUTPUT_EYES", "right_eye_transparent.png")
-                    cv2.imwrite(output_right_no_background_filepath, right_eye_image)
-                    print(f"[SUCCESS] Saved corrected right eye with transparent background to: {output_right_no_background_filepath}")
+            output_left_no_background_filepath = os.path.join("OUTPUT_EYES", "left_eye_transparent.png")
+            cv2.imwrite(output_left_no_background_filepath, left_eye1)
+            print(f"[SUCCESS] Saved corrected left eye with transparent background to: {output_left_no_background_filepath}")
+
+            output_right_no_background_filepath = os.path.join("OUTPUT_EYES", "right_eye_transparent.png")
+            cv2.imwrite(output_right_no_background_filepath, right_eye1)
+            print(f"[SUCCESS] Saved corrected right eye with transparent background to: {output_right_no_background_filepath}")
             
             with open(output_left_no_background_filepath, "rb") as left_eye_no_background_file, \
                     open(output_right_no_background_filepath, "rb") as right_eye_no_background_file:
@@ -394,69 +379,46 @@ async def generate_image(frame: UploadFile = File(...), extract_eyes: bool = For
         return {"error": str(e)}
 
 
-def apply_custom_opacity(mask, eye_region_opacity=255, border_width=2, start_opacity=255, decrement=0):
-    """
-    Apply a custom gradient of transparency around the eye region.
-    Opacity decreases by `decrement` starting from `start_opacity` after `border_width` pixels from the eye region.
-    `eye_region_opacity` allows control over the opacity of the eye region itself.
-    """
-    # Calculate the distance from the eye region
-    distances = cv2.distanceTransform(255 - mask, cv2.DIST_L2, 3)
+# Initialize MediaPipe Face Mesh
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1, refine_landmarks=True)
 
-    # Create an opacity mask initialized to 0 (fully transparent)
-    gradient_mask = np.zeros_like(mask, dtype=np.uint8)
+# Updated landmarks for left and right eyes
+left_eye_landmarks = [7, 163, 144, 153, 154, 155, 173, 157, 158, 159, 160, 161]
+right_eye_landmarks = [384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374, 380, 381, 382, 398]
 
-    # Apply opacity to pixels within the eye region (fully opaque or as specified by eye_region_opacity)
-    gradient_mask[mask == 255] = eye_region_opacity
+def _extract_eye_region_with_alpha(frame, eye_points):
+    height, width = frame.shape[:2]
+    mask = np.zeros((height, width), dtype=np.uint8)
+    cv2.fillPoly(mask, [np.array(eye_points)], 255)
 
-    # Apply border opacity (200) for the region within border_width distance from the eye region
-    gradient_mask[(distances > 0) & (distances <= border_width)] = start_opacity
+    # Extract eye region with mask
+    eye_region = cv2.bitwise_and(frame, frame, mask=mask)
+    
+    # Crop the eye region based on mask
+    x, y, w, h = cv2.boundingRect(np.array(eye_points))
+    eye_crop = eye_region[y:y+h, x:x+w]
+    mask_crop = mask[y:y+h, x:x+w]
 
-    # Gradually decrease opacity for pixels beyond the border width
-    for step in range(border_width + 1, int(distances.max()) + 1):
-        opacity_value = max(start_opacity - (step - border_width) * decrement, 0)
-        gradient_mask[distances == step] = opacity_value
+    # Add an alpha channel
+    eye_with_alpha = cv2.cvtColor(eye_crop, cv2.COLOR_BGR2BGRA)
+    eye_with_alpha[:, :, 3] = mask_crop  # Set alpha channel based on mask
+    
+    return eye_with_alpha, (x, y, w, h)
 
-    return gradient_mask
+def extract_eye_region(frame, face_mesh_results):
+    img_h, img_w, _ = frame.shape
 
-def extract_eye_region_with_gradient(frame, eye_landmarks, bounding_box, eye_region_opacity=255):
-    h, w, _ = frame.shape
+    if face_mesh_results.multi_face_landmarks:
+        for face_landmarks in face_mesh_results.multi_face_landmarks:
+            left_eye_points = [(int(face_landmarks.landmark[idx].x * img_w), int(face_landmarks.landmark[idx].y * img_h)) for idx in left_eye_landmarks]
+            right_eye_points = [(int(face_landmarks.landmark[idx].x * img_w), int(face_landmarks.landmark[idx].y * img_h)) for idx in right_eye_landmarks]
 
-    # Convert landmarks to 2D pixel coordinates
-    eye_coords = np.array([(int(landmark.x * w), int(landmark.y * h)) for landmark in eye_landmarks], np.int32)
+            left_eye_frame, left_bbox = _extract_eye_region_with_alpha(frame, left_eye_points)
+            right_eye_frame, right_bbox = _extract_eye_region_with_alpha(frame, right_eye_points)
 
-    # Create a mask for the eye region based on the landmarks
-    mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.fillPoly(mask, [eye_coords], 255)
-
-    # Create a transparent image with alpha channel
-    transparent_image = np.zeros((h, w, 4), dtype=np.uint8)
-
-    # Copy the original frame to the transparent image
-    transparent_image[:, :, :3] = frame
-
-    # Calculate the exact region around the eye based on the landmarks
-    x_min, x_max = np.min(eye_coords[:, 0]), np.max(eye_coords[:, 0])
-    y_min, y_max = np.min(eye_coords[:, 1]), np.max(eye_coords[:, 1])
-
-    # Apply custom opacity around the eye region
-    gradient_mask = apply_custom_opacity(mask, eye_region_opacity=eye_region_opacity)
-
-    # Apply the gradient opacity to the entire frame's alpha channel
-    transparent_image[:, :, 3] = gradient_mask  # Apply the gradient to the alpha channel
-
-    # Ensure that the eye region has the desired opacity
-    mask_cropped = mask[y_min:y_max, x_min:x_max]
-    transparent_image[y_min:y_max, x_min:x_max][mask_cropped == 255, 3] = eye_region_opacity
-
-    # Crop the transparent image to the exact eye region based on eye coordinates
-    cropped_eye = transparent_image[y_min:y_max, x_min:x_max]
-
-    return cropped_eye
-
-
-
-
+            return left_eye_frame, right_eye_frame, left_bbox, right_bbox
+    return None, None, None, None
 
 
 def read_image_sync(file: UploadFile):
@@ -489,11 +451,9 @@ async def save_dataset_image(file: UploadFile = File(...), path: str = Form(...)
     with open(save_path, "wb") as f:
         f.write(await file.read())
     logging.info(f"Saved file to: {save_path}")
+    await asyncio.sleep(0.01)
     return JSONResponse(content={"message": "File saved successfully"})
 
-import asyncio
-import logging
-from fastapi import HTTPException
 
 class TrainRequest(BaseModel):
     train_model_name: str
