@@ -113,7 +113,7 @@ def objective(eye_type, trial, train_ds, test_ds, val_ds, debug=True):
     # Run training for a small number of epochs to evaluate performance
     if debug:
         print("[DEBUG] Starting GAN model training...")
-    gan_model.fit(model_name='opt_eyes_gan'+'_'+ eye_type, train_ds=train_ds, test_ds=test_ds, epochs=1)
+    gan_model.fit(model_name='opt_eyes_gan'+'_'+ eye_type, train_ds=train_ds, test_ds=test_ds, epochs=10)
     if debug:
         print("[DEBUG] GAN model training complete.")
 
@@ -141,7 +141,7 @@ async def load_GAN(model_name, eye_type, device_type, train_ds=None, test_ds=Non
     if train_ds is not None and test_ds is not None and val_ds is not None:
         print("[INFO] Running Optuna hyperparameter optimization...")
         study = optuna.create_study(direction='minimize')
-        study.optimize(lambda trial: objective(eye_type, trial, train_ds, test_ds, val_ds), n_trials=1)  # Specify number of trials
+        study.optimize(lambda trial: objective(eye_type, trial, train_ds, test_ds, val_ds), n_trials=10)  # Specify number of trials
     
         
         # Retrieve and print the best hyperparameters
