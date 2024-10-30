@@ -41,13 +41,15 @@ class Eyes:
             self.left_eye_offset_y = 0  # Offset to move the left eye bounding box up/down
 
             self.right_eye_offset_x = 10  # Offset to move the right eye bounding box left/right
-            self.right_eye_offset_y = 5  # Offset to move the right eye bounding box up/down
+            self.right_eye_offset_y = 0  # Offset to move the right eye bounding box up/down
             
             self.left_eye_bbox = None
             self.right_eye_bbox = None
 
             self.should_correct_gaze = True
             self.gaze_direction = "Gaze Direction: Away"
+            self.classify_count = 0
+            self.classify_count_total = 0
 
             # Initialize overlay images
             self.left_eye_img = None
@@ -97,16 +99,138 @@ class Eyes:
             logging.error(f"Error in get_new_eyes: {e}")
             raise
 
+    def draw_pupil_dots(self, frame, left_eye_landmarks, right_eye_landmarks, threshold=50):
+        def get_pupil_center(eye_landmarks, frame, threshold):
+            min_x = np.min(eye_landmarks[:, 0]) + 5
+            max_x = np.max(eye_landmarks[:, 0]) - 10
+            min_y = np.min(eye_landmarks[:, 1]) - 10
+            max_y = np.max(eye_landmarks[:, 1]) + 10
+            eye_region = frame[min_y:max_y, min_x:max_x]
+
+            # Convert to grayscale before applying median blur and thresholding
+            gray_eye = cv2.cvtColor(eye_region, cv2.COLOR_BGR2GRAY)
+            blurred_eye = cv2.medianBlur(gray_eye, 5)
+            _, thresholded_eye = cv2.threshold(blurred_eye, threshold, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+            
+            _, _, stats, centroids = cv2.connectedComponentsWithStats(thresholded_eye, 4)
+            
+            if len(centroids) > 1:
+                largest_component_index = np.argmax(stats[1:, -1]) + 1
+                pupil_center = centroids[largest_component_index]
+                pupil_center_x = int(pupil_center[0] + min_x)
+                pupil_center_y = int(pupil_center[1] + min_y)
+                return (pupil_center_x, pupil_center_y)
+            else:
+                return None
+
+        # Detect pupil centers for both eyes
+        left_pupil_center = get_pupil_center(left_eye_landmarks, frame, threshold)
+        right_pupil_center = get_pupil_center(right_eye_landmarks, frame, threshold)
+
+        # Draw green dots on the pupils if detected
+        if left_pupil_center:
+            cv2.circle(frame, left_pupil_center, 3, (0, 255, 0), -1)
+        if right_pupil_center:
+            cv2.circle(frame, right_pupil_center, 3, (0, 255, 0), -1)
+
+        looking_at_camera = False
+        print("Before looking_at_camera: ", looking_at_camera)
+        print("Before =============================================")
+        print("Before RIGHT PUPIL CENTER: ", right_pupil_center)
+        print("Before Right -> right_eye_landmarks[0]: ", right_eye_landmarks[0])
+        print("Before Right -> right_eye_landmarks[8]: ", right_eye_landmarks[8])
+        print("Before Bottom -> right_eye_landmarks[11]: ", right_eye_landmarks[11])
+        print("Before Top -> right_eye_landmarks[4]: ", right_eye_landmarks[4])
+
+        
+
+        # Right Vertical Thresholds
+        y_diff = right_pupil_center[1] - right_eye_landmarks[4][1]
+
+        print('Y-DIFF: ', y_diff)
+        # Is Looking UP ?
+        if y_diff <= 0:
+            x_diff = right_pupil_center[0] - right_eye_landmarks[4][0]
+            print('X-DIFF: ', x_diff)
+
+            # # Is Looking UP ?
+            # if abs(x_diff) < 17:
+            looking_at_camera = True
+
+        print("After looking_at_camera: ", looking_at_camera)
+        print("After =============================================")
+        print("After RIGHT PUPIL CENTER: ", right_pupil_center)
+        print("After Right -> right_eye_landmarks[0]: ", right_eye_landmarks[0])
+        print("After Right -> right_eye_landmarks[8]: ", right_eye_landmarks[8])
+        print("After Bottom -> right_eye_landmarks[11]: ", right_eye_landmarks[11])
+        print("After Top -> right_eye_landmarks[4]: ", right_eye_landmarks[4])
+
+        return looking_at_camera, frame
+
+    def process_frame_with_face_mesh(self, face_landmarks, frame):
+        # Define landmark indices for each eye
+        eye_landmarks_indices = {
+            "left_eye": [7, 163, 144, 153, 154, 155, 173, 157, 158, 159, 160, 161],
+            "right_eye": [384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374, 380, 381, 382, 398]
+        }
+
+        # Extract coordinates for left and right eyes
+        left_eye_landmarks = np.array(
+            [(int(face_landmarks.landmark[i].x * frame.shape[1]),
+              int(face_landmarks.landmark[i].y * frame.shape[0]))
+             for i in eye_landmarks_indices["left_eye"]]
+        )
+        right_eye_landmarks = np.array(
+            [(int(face_landmarks.landmark[i].x * frame.shape[1]),
+              int(face_landmarks.landmark[i].y * frame.shape[0]))
+             for i in eye_landmarks_indices["right_eye"]]
+        )
+        
+        # Draw pupil dots on frame
+        looking_at_camera, frame = self.draw_pupil_dots(frame, left_eye_landmarks, right_eye_landmarks, threshold=50)
+
+        return looking_at_camera, frame
+
+    def classify_gaze(self, frame, show_face_mesh, show_pupils):
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        results = self.face_mesh.process(frame_rgb)
+
+        if results.multi_face_landmarks:
+            for face_landmarks in results.multi_face_landmarks:
+                if show_face_mesh:
+                    self.mp_drawing.draw_landmarks(
+                        image=frame,
+                        landmark_list=face_landmarks,
+                        connections=self.mp_face_mesh.FACEMESH_TESSELATION,
+                        landmark_drawing_spec=self.drawing_spec,
+                        connection_drawing_spec=self.drawing_spec
+                    )
+
+
+                if show_pupils:
+                    looking_at_camera, frame = self.process_frame_with_face_mesh(face_landmarks, frame)
+
+                if looking_at_camera == False:
+                    gaze_direction = "Gaze Direction: Away"
+                else: gaze_direction = "Gaze Direction: At Camera"
+
+                return gaze_direction
+
+        return "Gaze: Unknown"
 
     def process_frame(self, frame, show_face_mesh, classify_gaze, draw_rectangles):
         try:
             h, w, _ = frame.shape
-
             
             # Determine gaze direction
-            if classify_gaze:
-                self.gaze_direction = self.gaze_classifier.classify_gaze(frame, show_face_mesh, True)
-                self.should_correct_gaze = True #self.gaze_direction == "Gaze Direction: Away"
+            if classify_gaze: 
+                if self.classify_count >= self.classify_count_total:
+                    self.classify_count = 0
+                    self.gaze_direction = self.classify_gaze(frame, show_face_mesh, True)
+                else: self.classify_count +=1
+
+                self.should_correct_gaze = self.gaze_direction == "Gaze Direction: Away"
                 cv2.putText(frame, self.gaze_direction, (w // 2 - 100, h // 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             if draw_rectangles and self.left_eye_bbox and self.right_eye_bbox:
@@ -286,8 +410,8 @@ class Eyes:
             print("Starting gaze correction")
 
             # Set default paths dynamically
-            corrected_left_eye_path = os.path.abspath('generated_images/left_eye.jpg')
-            corrected_right_eye_path = os.path.abspath('generated_images/right_eye.jpg')
+            corrected_left_eye_path = os.path.abspath('generated_images/left_eye.png')
+            corrected_right_eye_path = os.path.abspath('generated_images/right_eye.png')
 
             # Save the original frame for away gaze
             dest_image_path = 'destination_image.png'  # Use .png to preserve alpha channel
@@ -345,17 +469,61 @@ class Eyes:
                                 retry_count += 1
 
                         if self.left_eye_img is not None and self.right_eye_img is not None:
-                            left_eye_landmarks = [face_landmarks.landmark[i] for i in [33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144,]]
-                            right_eye_landmarks = [face_landmarks.landmark[i] for i in [362, 398, 384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374,]]
-                            self._calculate_eye_boxes(face_landmarks, frame)
-                            self.overlay_image(corrected_image, left_eye_landmarks, self.left_eye_img, extract_eyes, face_landmarks, self.left_eye_bbox)
-                            self.overlay_image(corrected_image, right_eye_landmarks, self.right_eye_img, extract_eyes, face_landmarks, self.right_eye_bbox)
+                            left_eye_landmarks = [7, 163, 144, 153, 154, 155, 173, 157, 158, 159, 160, 161]
+                            right_eye_landmarks = [384, 385, 386, 387, 388, 466, 263, 249, 390, 373, 374, 380, 381, 382, 398]
+                            
+
+                            def _extract_eye_region_with_alpha(frame, eye_points):
+                                height, width = frame.shape[:2]
+                                mask = np.zeros((height, width), dtype=np.uint8)
+                                cv2.fillPoly(mask, [np.array(eye_points)], 255)
+
+                                # Extract eye region with mask
+                                eye_region = cv2.bitwise_and(frame, frame, mask=mask)
+                                
+                                # Crop the eye region based on mask
+                                x, y, w, h = cv2.boundingRect(np.array(eye_points))
+                                eye_crop = eye_region[y:y+h, x:x+w]
+                                mask_crop = mask[y:y+h, x:x+w]
+
+                                # Add an alpha channel
+                                eye_with_alpha = cv2.cvtColor(eye_crop, cv2.COLOR_BGR2BGRA)
+                                eye_with_alpha[:, :, 3] = mask_crop  # Set alpha channel based on mask
+                                
+                                return eye_with_alpha, (x, y, w, h)
+
+                            def extract_eye_region(frame, face_mesh_results):
+                                img_h, img_w, _ = frame.shape
+
+                                if face_mesh_results.multi_face_landmarks:
+                                    for face_landmarks in face_mesh_results.multi_face_landmarks:
+                                        left_eye_points = [(int(face_landmarks.landmark[idx].x * img_w), int(face_landmarks.landmark[idx].y * img_h)) for idx in left_eye_landmarks]
+                                        right_eye_points = [(int(face_landmarks.landmark[idx].x * img_w), int(face_landmarks.landmark[idx].y * img_h)) for idx in right_eye_landmarks]
+
+                                        left_eye_frame, left_bbox = _extract_eye_region_with_alpha(frame, left_eye_points)
+                                        right_eye_frame, right_bbox = _extract_eye_region_with_alpha(frame, right_eye_points)
+
+                                        return left_eye_frame, right_eye_frame, left_bbox, right_bbox
+                                return None, None, None, None
+                            
+                            results2 = self.face_mesh.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                            
+
+                            if extract_eyes:
+                                left_eye2, right_eye2, left_bbox, right_bbox = extract_eye_region(frame, results2)
+                            else:
+                                self._calculate_eye_boxes(face_landmarks, frame)
+                                left_bbox  = self.left_eye_bbox
+                                right_bbox = self.right_eye_bbox
+
+                            self.overlay_image(corrected_image, self.left_eye_img, extract_eyes, left_bbox)
+                            self.overlay_image(corrected_image, self.right_eye_img, extract_eyes, right_bbox)
 
                             corrected_image_path = 'corrected_image.png'
                             cv2.imwrite(corrected_image_path, corrected_image)
                             print(f"Corrected frame saved to {corrected_image_path}")
 
-                            # To much processing, offloaded to GPU - IMPORTANT KEEP THIS COMMENTED
+                            # To much processing, offloaded to GPU server - IMPORTANT KEEP THIS COMMENTED
                             # if extract_eyes:
                             #     corrected_image = extract(corrected_image_path=corrected_image_path, dest_image_path=dest_image_path)
                             # else:
@@ -444,105 +612,37 @@ class Eyes:
             logging.error(f"Error in overlay_image: {e}")
             raise
 
-    def overlay_image(self, frame, eye_landmarks, eye_img, extract_eyes, face_landmarks, eye_bbox):
+    def overlay_image(self, frame, eye_img, extract_eyes, eye_bbox):
         try:
             
             if extract_eyes:
-                # Define the scaling factor
-                scale = 1
+                def blend_eye_region(base_image, eye_region, position):
+                    x, y, w, h = position
+                    overlay = base_image[y:y+h, x:x+w]
 
-                # Convert the eye landmarks from normalized coordinates to pixel coordinates
-                height, width, _ = frame.shape
-                eye_points = np.array([(int(landmark.x * width), int(landmark.y * height)) for landmark in eye_landmarks])
+                    # Resize eye region to match overlay dimensions if needed
+                    eye_region_resized = cv2.resize(eye_region, (overlay.shape[1], overlay.shape[0]), interpolation=cv2.INTER_AREA)
 
-                # Calculate the bounding box around the eye landmarks
-                x_min = np.min(eye_points[:, 0])
-                print("| x_min | --> ", x_min)
-                x_max = np.max(eye_points[:, 0])
-                print("| x_max | --> ", x_max)
-                y_min = np.min(eye_points[:, 1])
-                print("| y_min | --> ", y_min)
-                y_max = np.max(eye_points[:, 1])
-                print("| y_max | --> ", y_max)
+                    # Blend the eye region using the alpha channel
+                    alpha_eye = eye_region_resized[:, :, 3] / 255.0
+                    for c in range(3):  # Blend each color channel
+                        overlay[:, :, c] = overlay[:, :, c] * (1 - alpha_eye) + eye_region_resized[:, :, c] * alpha_eye
 
-                # Determine the dimensions of the eye region
-                eye_width = x_max - x_min
-                eye_height = y_max - y_min
-
-                # Apply the scaling factor to the dimensions
-                eye_width = int(eye_width * scale)
-                eye_height = int(eye_height * scale)
-
-                # Recalculate the x_min and y_min to center the enlarged image
-                x_min = x_min - (eye_width - (x_max - x_min)) // 2
-                y_min = y_min - (eye_height - (y_max - y_min)) // 2
-
-                # Ensure the new coordinates stay within the frame boundaries
-                x_min = max(0, x_min)
-                y_min = max(0, y_min)
-                x_max = min(width, x_min + eye_width)
-                y_max = min(height, y_min + eye_height)
-
-                # Resize the eye image to the new dimensions
-                resized_eye_img = cv2.resize(eye_img, (eye_width, eye_height))
-
-                # Ensure the eye image has the correct number of channels
-                if resized_eye_img.shape[2] == 4:  # Check if it has an alpha channel
-                    # Separate the color and alpha channels
-                    eye_img_rgb = resized_eye_img[:, :, :3]  # Use RGB channels
-                    alpha_mask = resized_eye_img[:, :, 3] / 255.0  # Normalize alpha mask to [0, 1] range
-
-                    # Erode the alpha mask to reduce dark edges
-                    alpha_mask = cv2.erode(alpha_mask, np.ones((2, 2), np.uint8), iterations=1)
-
-                    # Apply Gaussian blur to further soften the edges of the alpha mask
-                    alpha_mask = cv2.GaussianBlur(alpha_mask, (5, 5), 0)
-
-                    # Get the region of interest from the frame where the eye will be placed
-                    eye_region = frame[y_min:y_max, x_min:x_max]
-
-                    # Perform the blending of the eye image with the frame
-                    for c in range(0, 3):
-                        eye_region[:, :, c] = (
-                            alpha_mask * eye_img_rgb[:, :, c] + 
-                            (1 - alpha_mask) * eye_region[:, :, c]
-                        )
-
-                    # Replace the modified region in the original frame
-                    frame[y_min:y_max, x_min:x_max] = eye_region
-
-                else:
-                    # If no alpha channel, use basic blending
-                    eye_region = frame[y_min:y_min + resized_eye_img.shape[0], x_min:x_min + resized_eye_img.shape[1]]
-                    blended_eye = cv2.addWeighted(eye_region, 0, resized_eye_img, 1, 0)
-                    frame[y_min:y_min + resized_eye_img.shape[0], x_min:x_min + resized_eye_img.shape[1]] = blended_eye
+                    base_image[y:y+h, x:x+w] = overlay
+                    return base_image
+                
+                
+                
+                frame = blend_eye_region(frame, eye_img, eye_bbox)
 
             else:         
                 (x_min, y_min), (x_max, y_max) = eye_bbox
                 eye_region = frame[y_min:y_max, x_min:x_max]
                 eye_img_resized = cv2.resize(eye_img, (x_max - x_min, y_max - y_min))
 
-                # Histogram matching to adjust contrast and color
-                eye_img_matched = match_histograms(eye_img_resized, eye_region)
+                # Directly overlay the resized eye image onto the frame
+                frame[y_min:y_max, x_min:x_max] = eye_img
 
-                # Ensure both images have the same data type (uint8)
-                if eye_img_matched.dtype != eye_region.dtype:
-                    eye_img_matched = eye_img_matched.astype(eye_region.dtype)
-
-                # Increase the weight of the eye image to make it more prominent
-                blended_eye = cv2.addWeighted(eye_region, 0.1, eye_img_matched, 0.9, 0)
-
-                # If the eye image has an alpha channel, blend only the RGB channels
-                if eye_img_resized.shape[2] == 4:  # Check if the image has an alpha channel
-                    eye_img_rgb = eye_img_resized[:, :, :3]  # Use only RGB channels
-                    mask = eye_img_resized[:, :, 3]  # Alpha channel
-                    mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR) / 255.0  # Normalize alpha mask
-
-                    # Perform alpha blending based on the alpha channel
-                    frame[y_min:y_max, x_min:x_max] = (1 - mask) * eye_region + mask * eye_img_rgb
-                else:
-                    # No alpha channel, use the blended image
-                    frame[y_min:y_max, x_min:x_max] = blended_eye
 
         except Exception as e:
             logging.error(f"Error in overlay_image: {e}")

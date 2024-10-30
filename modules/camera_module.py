@@ -31,7 +31,7 @@ class CameraModule:
         self.camera_on = False
         self.settings = {}
         self.camera = None
-        self.device_nr = 2 # 0 or 1 or 2
+        self.device_nr =  2 # 0 or 1 or 2 or 3-for vcam input
         self.eyes_processor = Eyes()
         self.frame_queue = queue.Queue(maxsize=50)
         self.camera_thread = None
@@ -51,7 +51,7 @@ class CameraModule:
         self.lock = threading.Lock()  # Optional lock if you need more control
         self.thread_running = False
         
-        self.vcam = self.init_vcam(640, 480)  # For webcam
+        # self.vcam = self.init_vcam(640, 480)  # For webcam
         # self.vcam = self.init_vcam(960, 540)    # For iphone
 
     def set_active_camera(self, camera_index):
@@ -379,9 +379,9 @@ class CameraModule:
             # self.eyes_processor.should_correct_gaze = False
 
         # Send the frame to the virtual camera if enabled
-        if vcam_on:
-            self.vcam.send(frame)
-            self.vcam.sleep_until_next_frame()
+        # if vcam_on:
+        #     self.vcam.send(frame)
+        #     self.vcam.sleep_until_next_frame()
 
 
         # Encode frame and return as bytes
@@ -438,9 +438,9 @@ class CameraModule:
                             os.makedirs('generated_images')
 
                         # Save the corrected images
-                        with open('generated_images/left_eye.jpg', 'wb') as f:
+                        with open('generated_images/left_eye.png', 'wb') as f:
                             f.write(base64.b64decode(corrected_images["left_eye"]))
-                        with open('generated_images/right_eye.jpg', 'wb') as f:
+                        with open('generated_images/right_eye.png', 'wb') as f:
                             f.write(base64.b64decode(corrected_images["right_eye"]))
 
                         print("[SUCCESS] Corrected eye images saved locally.")

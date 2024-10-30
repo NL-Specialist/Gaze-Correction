@@ -357,7 +357,7 @@ def handle_start_video(data):
                                         stream_settings[stream]['show_face_outline'], 
                                         stream_settings[stream]['show_text'], 
                                         stream_settings[stream]['extract_eyes']
-                                            )
+                                        )
         print(f"Stream started: {stream}, with initial settings: {stream_settings[stream]}")
 
         while camera_state['camera_on']:            
@@ -487,10 +487,13 @@ def clear_existing_training(model_name):
 
 def send_files_concurrently(folder_path, dataset_name):
     global dataset_loading_progress, total_files, files_sent, calibration_progress
-    total_files = sum([len(files) for r, d, files in os.walk(folder_path)])
+    total_files = sum([len(files) for _, _, files in os.walk(folder_path)])
     files_sent = 0
     dataset_loading_progress = 0
     print(f"[INFO] Total files to send: {total_files}")
+
+    # Define a small delay if there are many files
+    delay = 0.01 if total_files > 50 else 0  # Adjust the threshold and delay as needed
 
     def send_file(file_path, rel_path):
         global dataset_loading_progress, files_sent, total_files
@@ -506,7 +509,10 @@ def send_files_concurrently(folder_path, dataset_name):
                 print(f"[ERROR] Sending {file_path} failed with status code {response.status_code}")
                 print("[ERROR] Response text: ", response.text)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        if delay > 0:
+            time.sleep(delay)  # Apply delay if necessary
+
+    with ThreadPoolExecutor(max_workers=25) as executor:  # Adjust max_workers if needed
         for root, _, files in os.walk(folder_path):
             for filename in files:
                 if filename.endswith(".jpg") or filename.endswith(".png"):
@@ -518,11 +524,12 @@ def send_files_concurrently(folder_path, dataset_name):
                     executor.submit(send_file, file_path, rel_path)
                 else:
                     print(f"[DEBUG] Skipped file: {filename} (not an image)")
+
     dataset_loading_progress = 100
-    time.sleep(5)
+    time.sleep(5)  # Wait at the end for the whole batch to complete
     print("[INFO] All files sent successfully.")
 
-    if calibration_progress['on'] == True:
+    if calibration_progress['on']:
         threading.Thread(target=start_calibration_training, args=(folder_path,)).start()
     # dataset_loading_progress = 100  # Set progress to 100% after all files are sent
 
