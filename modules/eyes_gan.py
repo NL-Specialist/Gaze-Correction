@@ -7,6 +7,7 @@ import re
 import asyncio
 import threading
 import json
+import csv
 
 # TensorFlow and Keras for deep learning
 import tensorflow as tf
@@ -195,7 +196,7 @@ class EYES_GAN:
             self.model_name = model_name
             self.model_save_dir = os.path.join('models', self.model_name)
             print("[INFO] Model Save Directory Set: ", self.model_save_dir)
-
+            
             # Clear Existing Training
             model_path = os.path.join('models', model_name)
             if os.path.exists(model_path):
@@ -214,21 +215,24 @@ class EYES_GAN:
 
             self.checkpoint_dir = os.path.join(self.model_save_dir, 'training_checkpoints')
             print("[INFO] Training Checkpoint Directory Set: ", self.checkpoint_dir)
-
+            
             self.image_checkpoint_dir = os.path.join(self.model_save_dir, 'image_checkpoints')
             print("[INFO] Image Checkpoint Directory Set: ", self.image_checkpoint_dir)
-
+            
             example_input, example_target = next(iter(test_ds.take(1)))
             example_input, example_target = example_input[0], example_target[0]
-
+            
             steps_per_epoch = tf.data.experimental.cardinality(train_ds).numpy()
             print(f'Steps per epoch: {steps_per_epoch}')
-
+            
             if not os.path.exists(self.checkpoint_dir):
                 os.makedirs(self.checkpoint_dir)
 
             # Variable to track the best generator loss
             best_gen_loss = float('inf')
+            
+            # List to store epoch loss details
+            epoch_loss_data = []
 
             for epoch in range(epochs):
                 print(f"Epoch {epoch}/{epochs}")
@@ -255,9 +259,18 @@ class EYES_GAN:
                         if not 'opt_eyes_gan' in model_name:
                             self._save_best_image(gen_output, gen_total_loss, gen_gan_loss, gen_l1_loss, disc_total_loss)
 
+                # Save loss details for the current epoch
+                epoch_loss_data.append({
+                    'epoch': epoch + 1,
+                    'gen_total_loss': gen_total_loss.numpy(),
+                    'gen_gan_loss': gen_gan_loss.numpy(),
+                    'gen_l1_loss': gen_l1_loss.numpy(),
+                    'disc_total_loss': disc_total_loss.numpy()
+                })
+
                 self.gen_loss.append(gen_total_loss)
                 self.disc_loss.append(disc_total_loss)
-                progress_percentage = ((epoch+1) / epochs) * 100
+                progress_percentage = ((epoch + 1) / epochs) * 100
                 self.progress.append(progress_percentage)
 
                 print("[FIT] PROGRESS: ", progress_percentage)
@@ -269,8 +282,18 @@ class EYES_GAN:
 
                 print(f'Time taken for epoch {epoch} is {time.time() - start:.2f} sec\n')
 
-            self.summary_writer.close()
+            # Write loss data to CSV after training
+            csv_file_path = os.path.join(self.model_save_dir, 'epoch_loss_data.csv')
+            with open(csv_file_path, mode='w', newline='') as file:
+                writer = csv.DictWriter(file, fieldnames=['epoch', 'gen_total_loss', 'gen_gan_loss', 'gen_l1_loss', 'disc_total_loss'])
+                writer.writeheader()
+                for data in epoch_loss_data:
+                    writer.writerow(data)
 
+            print(f"Loss data saved to {csv_file_path}")
+            
+            self.summary_writer.close()
+            
     # Define a helper function to save the best generated image
     def _save_best_image(self, gen_output, gen_total_loss, gen_gan_loss, gen_l1_loss, disc_total_loss):        
         if not os.path.exists(self.model_save_dir):

@@ -141,7 +141,7 @@ async def load_GAN(model_name, eye_type, device_type, train_ds=None, test_ds=Non
     if train_ds is not None and test_ds is not None and val_ds is not None:
         print("[INFO] Running Optuna hyperparameter optimization...")
         study = optuna.create_study(direction='minimize')
-        study.optimize(lambda trial: objective(eye_type, trial, train_ds, test_ds, val_ds), n_trials=10)  # Specify number of trials
+        study.optimize(lambda trial: objective(eye_type, trial, train_ds, test_ds, val_ds), n_trials=5)  # Specify number of trials
     
         
         # Retrieve and print the best hyperparameters
