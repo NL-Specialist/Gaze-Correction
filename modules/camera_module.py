@@ -54,6 +54,41 @@ class CameraModule:
         # self.vcam = self.init_vcam(640, 480)  # For webcam
         # self.vcam = self.init_vcam(960, 540)    # For iphone
 
+        self.frame_rate = 30  # Default frame rate
+        self.timestamp_increment = 1 / self.frame_rate  # Calculate initial timestamp increment
+
+    def set_frame_rate(self, fps):
+        """Set the frame rate for capturing video frames."""
+        if fps > 0:
+            self.frame_rate = fps
+            self.timestamp_increment = 1 / fps  # Update timestamp increment
+            print(f"Frame rate set to: {self.frame_rate} FPS")
+            return True
+        else:
+            print("Frame rate must be positive.")
+            return False
+
+    def get_frame_rate(self):
+        """Get the current frame rate."""
+        return self.frame_rate
+    
+    def get_ambient_lighting(self, frame):
+        # Convert frame to grayscale for ambient lighting calculation
+        gray_frame = cv2.imdecode(np.frombuffer(frame, np.uint8), cv2.IMREAD_GRAYSCALE)
+                
+        # Calculate ambient lighting as the average intensity of the grayscale frame
+        if gray_frame is not None:
+            ambient_lighting = int(np.mean(gray_frame))
+            # Multiply by 1.5, cap to 255, and ensure it's an integer
+            ambient_lighting = min(int(ambient_lighting * 1.5), 255)
+        else:
+            ambient_lighting = 0  # Fallback if frame decoding fails
+
+        print("live-video-left: ambient_lighting: ", ambient_lighting)
+        
+        return ambient_lighting
+
+
     def set_active_camera(self, camera_index):
         try:
             self.device_nr = camera_index
@@ -126,30 +161,20 @@ class CameraModule:
         increasing timestamps are passed into the MediaPipe graph.
         """
         try:
-            previous_timestamp = None  # Track previous frame's timestamp
-            frame_rate = 30  # Frames per second
-            timestamp_increment = 1 / frame_rate
-            previous_timestamp = time.monotonic()
+            previous_timestamp = time.monotonic()  # Track previous frame's timestamp
 
             while not self.stop_event.is_set():
                 current_timestamp = time.monotonic()
 
-                # Calculate the expected timestamp increment based on the frame rate
-                expected_timestamp = previous_timestamp + timestamp_increment
-
-                if current_timestamp < expected_timestamp:
-                    time.sleep(expected_timestamp - current_timestamp)
+                # Sleep to maintain the frame rate
+                if current_timestamp < previous_timestamp + self.timestamp_increment:
+                    time.sleep(previous_timestamp + self.timestamp_increment - current_timestamp)
 
                 # Capture frame
                 success, frame = self.camera.read()
-
-                # Process and adjust timestamps accordingly
-                current_timestamp = time.monotonic()
-                if current_timestamp <= previous_timestamp:
-                    current_timestamp = previous_timestamp + timestamp_increment
-
-                previous_timestamp = current_timestamp
-
+                if not success:
+                    logging.error("Failed to capture frame from camera.")
+                    continue
 
                 # Rotate the frame if required (specific to your camera)
                 if self.device_nr == 2:
@@ -172,7 +197,10 @@ class CameraModule:
                 self.frame_queue.put(frame_bytes)
 
                 # Update the latest valid frame
-                self.latest_frame = frame      
+                self.latest_frame = frame
+
+                # Update the previous timestamp for the next iteration
+                previous_timestamp = time.monotonic()
 
         except Exception as e:
             logging.error(f"Error in _generate_frames: {e}", exc_info=True)
@@ -310,6 +338,8 @@ class CameraModule:
     def _process_left_and_right_eye_frame(self, frame):
         #self.latest_left_and_right_eye_frames = self.get_frame(stream="live-video-left-and-right-eye", show_face_mesh=False, classify_gaze=False, draw_rectangles=False, show_eyes=False, show_mouth=False, show_face_outline=False, show_text=False, extract_eyes=False)
         frames = {}
+        frame = self.eyes_processor.process_frame(
+            frame, show_face_mesh=False, classify_gaze=False, draw_rectangles=False)
         self.left_eye_frame = self.eyes_processor.get_left_eye_region(frame, False)
         if self.left_eye_frame is not None and self.left_eye_frame.size != 0:
             ret, buffer = cv2.imencode('.jpg', self.left_eye_frame)
@@ -354,11 +384,7 @@ class CameraModule:
         
     def _process_live_video_right_frame(self, frame):
         # Check if the active model is enabled and gaze correction is required
-        print("RUNNING STREAM FOR: live-video-right 1")
-        print("self.active_model: ", self.active_model)
-        print("self.eyes_processor.should_correct_gaze: ", self.eyes_processor.should_correct_gaze)
         if not self.active_model == 'disabled' and self.eyes_processor.should_correct_gaze:
-            print("RUNNING STREAM FOR: live-video-right 2")
             print("Active model is enabled and gaze correction is required")
 
             # Only generate images if no other thread is running
@@ -367,8 +393,8 @@ class CameraModule:
                     if not self.thread_running:  # Double check within the lock
                         self._generate_eye_images_async(frame, self.settings['live-video-right']['extract_eyes'])
                         self.thread_running = True
-            else:
-                print("Thread already running, skipping image generation")
+            # else:
+            #     print("Thread already running, skipping image generation")
 
             # Always use the latest corrected eye images from the folder
             frame = self.eyes_processor.correct_gaze(frame, self.settings['live-video-right']['extract_eyes'])
@@ -376,6 +402,7 @@ class CameraModule:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
         else:
             self.stop_generation()
+            print("Gaze correction stopped.")
             # self.eyes_processor.should_correct_gaze = False
 
         # Send the frame to the virtual camera if enabled

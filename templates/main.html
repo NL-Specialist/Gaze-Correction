@@ -31,11 +31,17 @@
                     </button>
                 </div>
                 <div id="left-panel" class="panel">
+                    <label id="input-frame-rate-label" class="frame-rate-label" title="Shows the current frame rate and ambient light level, calculated as the average pixel intensity.">
+                        Original Stream | Frame Rate: 0 | Ambient Lighting: 0
+                    </label>
                     <img id="live-video-left" alt="Live Video Left">
                 </div>
                 <div id="right-panel" class="panel">
+                    <label id="output-frame-rate-label" class="frame-rate-label" title="Displays the processed frame rate along with the adjusted ambient lighting level.">
+                        Processed Stream | Frame Rate: 0 | Ambient Lighting: 0
+                    </label>
                     <img id="live-video-right" alt="Live Video Right">
-                </div>
+                </div>               
                 <div class="performance-button-container">
                     <div class="performance-button-group left">
                         <div class="button-wrapper">
@@ -79,7 +85,7 @@
                         </div>
                         <div class="button-wrapper">
                             <button class="performance-button" style="background-image: url('/static/eye.png'); background-size: cover; background-position: center; background-repeat: no-repeat; width:45px; height:45px;"></button>
-                            <span class="button-description">Eye Extraction</span>
+                            <span class="button-description">Blend Eyes</span>
                         </div>
                     </div>
                 </div>

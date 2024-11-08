@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 # Standard library imports
 import os
+import numpy as np
 import logging
 import threading
 import zipfile
@@ -27,6 +28,7 @@ import stat
 from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 
+import cv2
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -331,10 +333,12 @@ def set_camera():
         return jsonify({'error': str(e)}), 500
 
 stream_settings = {}
+fps = 25
+ambient_lighting = 107
 
 @socketio.on('start_video')
 def handle_start_video(data):
-    global stream_settings
+    global stream_settings, fps, ambient_lighting
     try:
         stream = data.get('stream', '').strip()
         # Initialize the settings for the stream
@@ -348,42 +352,76 @@ def handle_start_video(data):
             'show_text': data.get('show_text'),
             'extract_eyes': data.get('extract_eyes')
         }
-        camera_module.set_frame_settings(stream, 
-                                        stream_settings[stream]['show_face_mesh'], 
-                                        stream_settings[stream]['classify_gaze'], 
-                                        stream_settings[stream]['draw_rectangles'], 
-                                        stream_settings[stream]['show_eyes'], 
-                                        stream_settings[stream]['show_mouth'], 
-                                        stream_settings[stream]['show_face_outline'], 
-                                        stream_settings[stream]['show_text'], 
-                                        stream_settings[stream]['extract_eyes']
-                                        )
+        
+        # Apply settings to the camera module
+        camera_module.set_frame_settings(
+            stream, 
+            stream_settings[stream]['show_face_mesh'], 
+            stream_settings[stream]['classify_gaze'], 
+            stream_settings[stream]['draw_rectangles'], 
+            stream_settings[stream]['show_eyes'], 
+            stream_settings[stream]['show_mouth'], 
+            stream_settings[stream]['show_face_outline'], 
+            stream_settings[stream]['show_text'], 
+            stream_settings[stream]['extract_eyes']
+        )
+        
         print(f"Stream started: {stream}, with initial settings: {stream_settings[stream]}")
-
+        
+        previous_frame_time = None
+        
         while camera_state['camera_on']:            
-            # Pass the current settings to the get_frame method
-            frame = camera_module.get_frame(stream)
+            # Get the current frame with the configured settings
+            frame = camera_module.get_frame(stream)                
             
             if frame:
+                current_time = time.time()
+                
+                if stream == 'live-video-left': 
+                    fps = camera_module.get_frame_rate()
+                    ambient_lighting = camera_module.get_ambient_lighting(frame)
+                    
+
+                elif stream == 'live-video-right':
+                    # Calculate FPS if there was a previous frame time
+                    if previous_frame_time is not None:
+                        fps = round((1.0 / (current_time - previous_frame_time) )*2.5)
+                    else:
+                        fps = 0  # Initial frame, so FPS is 0
+
+                    # Update the previous frame time
+                    previous_frame_time = current_time
+                    ambient_lighting = camera_module.get_ambient_lighting(frame)
+
+                else:
+                    fps = 25
+                    ambient_lighting = 107
+                
+                
                 if stream == "live-video-left-and-right-eye":
                     if 'left_eye' in frame and 'right_eye' in frame:
                         socketio.emit(stream, {
                             'type': 'left_and_right_eye',
                             'left_eye': frame['left_eye'],
-                            'right_eye': frame['right_eye']
+                            'right_eye': frame['right_eye'],
+                            'fps': fps,
+                            'ambient_lighting': ambient_lighting
                         })
                     else:
                         logging.warning("Left or right eye frame missing in 'live-video-left-and-right-eye' stream")
                 else:
                     socketio.emit(stream, {
                         'type': stream,
-                        'frame': frame
+                        'frame': frame,
+                        'fps': fps,
+                        'ambient_lighting': ambient_lighting
                     })
             else:
                 logging.warning("No frame received from get_frame() method")
     
     except Exception as e:
         logging.error(f"Error in start_video: {e}")
+
 
 
 @socketio.on('update_settings')

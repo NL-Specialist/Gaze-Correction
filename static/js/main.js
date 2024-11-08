@@ -139,7 +139,6 @@ function toggleFeature(button, button_description, feature, socket, stream) {
     }
 }
 
-
 function openWebsockets(streams) {
     streams.forEach((stream) => {
         if (!socketConnections[stream]) {
@@ -169,6 +168,8 @@ function openWebsockets(streams) {
 
                 // If the current stream is 'live-video-left', bind the button events
                 if (stream === 'live-video-left') {
+                    toggleInputLabelVisibility();
+                    toggleOutputLabelVisibility();
                     console.log('Assigning button click listeners for live-video-left stream.');
 
                     const buttons = document.querySelectorAll('.performance-button');
@@ -210,6 +211,14 @@ function openWebsockets(streams) {
             });
 
             socket.on(stream, (data) => {
+                // Calculate FPS based on the stream
+                const fps = data.fps || 0;
+                const ambient_lighting = data.ambient_lighting || 0;
+
+                // Update the labels with the calculated FPS
+                if ((stream === "live-video-left") || (stream === "live-video-right")) {
+                    fillInputLabel(fps, ambient_lighting); // Set ambient lighting to 0 as specified
+                }
                 // Handle incoming frames for left and right eyes
                 if (stream === "live-video-left-and-right-eye") {
                     if (data.type === "left_and_right_eye") {
@@ -1283,6 +1292,8 @@ function updateLossGraphs(generatorLoss, discriminatorLoss) {
     discLossChart.update();
 }
 
+
+
 // Function to reset the graphs
 function resetGraphs() {
     genLossChart.data.labels = [];
@@ -1297,7 +1308,70 @@ function resetGraphs() {
 // Call this function when the page loads
 document.addEventListener('DOMContentLoaded', (event) => {
     initializeLossGraphs();
+    fillInputLabel(0,0);
+    fillOutputLabel(25,102);
+    // Simulated loss values over 9 iterations for generator and discriminator
+    const generatorLosses = [10, 8, 7, 6, 5.5, 5.2, 5.1, 5.05, 5];
+    const discriminatorLosses = [0.7, 0.4, 0.6, 0.5, 0.45, 0.55, 0.52, 0.51, 0.5];
+
+    // Function to simulate and forcefully update losses
+    function forceRunLossUpdates() {
+        for (let i = 0; i < 9; i++) {
+            const generatorLoss = generatorLosses[i];
+            const discriminatorLoss = discriminatorLosses[i];
+            
+            // Run the updateLossGraphs function with simulated losses
+            updateLossGraphs(generatorLoss, discriminatorLoss);
+        }
+    }
+
+    // Execute the forced update
+    forceRunLossUpdates();
 });
+
+function toggleInputLabelVisibility(){
+    const inputLabel = document.getElementById("input-frame-rate-label");
+    // Check the current display style and toggle it
+    if (inputLabel.style.display === "none") {
+        inputLabel.style.display = "block";  // Show the label
+    } else {
+        inputLabel.style.display = "none";   // Hide the label
+    }
+}
+toggleInputLabelVisibility();
+
+function toggleOutputLabelVisibility(){
+    const outputLabel = document.getElementById("output-frame-rate-label");
+    // Check the current display style and toggle it
+    if (outputLabel.style.display === "none") {
+        outputLabel.style.display = "block";  // Show the label
+    } else {
+        outputLabel.style.display = "none";   // Hide the label
+    }
+}
+toggleOutputLabelVisibility();
+
+function fillInputLabel(fps, ambientLighting) {
+    const inputLabel = document.getElementById("input-frame-rate-label");
+
+    // Set FPS color based on conditions
+    const fpsColor = fps === 0 ? 'white' : (fps >= 5 ? 'green' : 'red');
+    const lightingColor = ambientLighting === 0 ? 'white' : (ambientLighting >= 50 && ambientLighting <= 150 ? 'green' : 'red');
+
+    inputLabel.innerHTML = `Original Stream | Frame Rate: <span style="color:${fpsColor}">${fps}</span> | Ambient Lighting: <span style="color:${lightingColor}">${ambientLighting}</span>`;
+}
+
+function fillOutputLabel(fps, ambientLighting) {
+    const outputLabel = document.getElementById("output-frame-rate-label");
+
+    // Set FPS color based on conditions
+    const fpsColor = fps === 0 ? 'white' : (fps >= 5 ? 'green' : 'red');
+    const lightingColor = ambientLighting === 0 ? 'white' : (ambientLighting >= 50 && ambientLighting <= 150 ? 'green' : 'red');
+
+    outputLabel.innerHTML = `Processed Stream | Frame Rate: <span style="color:${fpsColor}">${fps}</span> | Ambient Lighting: <span style="color:${lightingColor}">${ambientLighting}</span>`;
+}
+
+
 
 
 
