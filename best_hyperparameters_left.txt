@@ -1,1 +1,1 @@
-Best hyperparameters: {'gen_learning_rate': 0.00029080231544975497, 'disc_learning_rate': 3.701040896445823e-05, 'beta_1': 0.5536064323780013, 'lambda_value': 100}
+Best hyperparameters: {'gen_learning_rate': 6.298069640160654e-05, 'disc_learning_rate': 1.7147733272632762e-05, 'beta_1': 0.6750265165431345, 'lambda_value': 50}

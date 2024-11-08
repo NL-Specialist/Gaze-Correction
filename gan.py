@@ -113,7 +113,7 @@ def objective(eye_type, trial, train_ds, test_ds, val_ds, debug=True):
     # Run training for a small number of epochs to evaluate performance
     if debug:
         print("[DEBUG] Starting GAN model training...")
-    gan_model.fit(model_name='opt_eyes_gan'+'_'+ eye_type, train_ds=train_ds, test_ds=test_ds, epochs=10)
+    gan_model.fit(model_name='opt_eyes_gan'+'_'+ eye_type, train_ds=train_ds, test_ds=test_ds, epochs=5)
     if debug:
         print("[DEBUG] GAN model training complete.")
 
@@ -192,8 +192,9 @@ async def load_model(request: LoadModelRequest):
         # await offload_model()
         return {"status": "Model disabled.", "checkpoint_list":[]}
     
-    eyes_gan_left = await load_GAN(model_name, 'left', "0")
     eyes_gan_right = await load_GAN(model_name, 'right', "0")
+    eyes_gan_left = await load_GAN(model_name, 'left', "0")
+    
 
     # Get list of trained checkpoints
     checkpoint_list_left = await get_model_checkpoints(model_name=model_name+'_left')
